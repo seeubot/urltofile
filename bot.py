@@ -7,22 +7,14 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     filters, ContextTypes, CallbackQueryHandler
 )
-from pymongo import MongoClient
 import yt_dlp
 from urllib.parse import urlparse
 import math
 import aiohttp
+from aiohttp import web
 
-# Try to import aiohttp web for async webhook support
-try:
-    from aiohttp import web
-    AIOHTTP_WEB_AVAILABLE = True
-except ImportError:
-    AIOHTTP_WEB_AVAILABLE = False
-
-# Configuration from environment variables
+# Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '7545348868:AAGKlDigB-trWf2lgpz5CLFFsMZvK2VXPLs')
-MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://naya:naya@cluster0.spxgavf.mongodb.net/?appName=Cluster0')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 PORT = int(os.getenv('PORT', 8000))
@@ -41,44 +33,23 @@ logger = logging.getLogger(__name__)
 
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# MongoDB setup
-def setup_mongodb():
-    try:
-        client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
-            socketTimeoutMS=5000,
-            retryWrites=True,
-            retryReads=True
-        )
-        client.admin.command('ping')
-        db = client['telegram_bot']
-        logger.info("✅ Connected to MongoDB")
-        return db
-    except Exception as e:
-        logger.warning(f"❌ MongoDB connection failed: {e}")
-        return None
-
-db = setup_mongodb()
-downloads_collection = db['downloads'] if db is not None else None
-settings_collection = db['settings'] if db is not None else None
+# In-memory storage (resets on restart)
+user_settings = {}
+download_counts = {}
 
 def get_user_settings(user_id):
-    if settings_collection is None:
-        return {'watermark': ''}
-    settings = settings_collection.find_one({'user_id': user_id})
-    return settings if settings else {'watermark': ''}
+    return user_settings.get(user_id, {'watermark': ''})
 
 def update_user_watermark(user_id, watermark):
-    if settings_collection is None:
-        return False
-    settings_collection.update_one(
-        {'user_id': user_id},
-        {'$set': {'watermark': watermark}},
-        upsert=True
-    )
-    return True
+    if user_id not in user_settings:
+        user_settings[user_id] = {}
+    user_settings[user_id]['watermark'] = watermark
+
+def increment_download(user_id):
+    download_counts[user_id] = download_counts.get(user_id, 0) + 1
+
+def get_download_count(user_id):
+    return download_counts.get(user_id, 0)
 
 def extract_streaming_url_method1(url):
     ydl_opts = {
@@ -104,7 +75,6 @@ def extract_streaming_url_method1(url):
                 'title': info.get('title', 'video'),
                 'ext': info.get('ext', 'mp4'),
                 'filesize': info.get('filesize', 0),
-                'duration': info.get('duration', 0),
                 'method': 'method1'
             }
     except Exception as e:
@@ -259,7 +229,7 @@ async def settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     settings = get_user_settings(user_id)
-    watermark = settings.get('watermark', 'None') or 'None'
+    watermark = settings.get('watermark', '') or 'None'
     keyboard = [
         [InlineKeyboardButton("💧 Set Watermark", callback_data='set_watermark')],
         [InlineKeyboardButton("🗑️ Clear Watermark", callback_data='clear_watermark')],
@@ -273,7 +243,6 @@ async def settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # Answer callback query first to prevent timeout
     try:
         await query.answer()
     except Exception as e:
@@ -283,8 +252,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await settings_menu(update, context)
     elif query.data == 'show_stats':
         user_id = query.from_user.id
-        count = downloads_collection.count_documents({'user_id': user_id}) if downloads_collection else 0
-        text = f"📊 You've downloaded {count} videos!" if downloads_collection else "📊 Stats unavailable."
+        count = get_download_count(user_id)
+        text = f"📊 You've downloaded {count} videos this session!"
         keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     elif query.data == 'set_watermark':
@@ -337,14 +306,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("❌ Could not extract URL. Check if video is accessible.")
             return
         
-        if downloads_collection:
-            downloads_collection.insert_one({
-                'user_id': user_id,
-                'original_url': url,
-                'title': info['title'],
-                'filesize': info.get('filesize', 0),
-                'method': info.get('method', 'unknown')
-            })
+        increment_download(user_id)
         
         await status_msg.edit_text(f"⬇️ Downloading: {info['title']}...")
         settings = get_user_settings(user_id)
@@ -424,22 +386,17 @@ def setup_application():
     return app
 
 async def run_webhook():
-    """Run bot with webhook using python-telegram-bot's built-in webhook support"""
     app = setup_application()
-    
-    # Set up webhook URL
     webhook_path = f"/{BOT_TOKEN}"
     full_webhook_url = f"{WEBHOOK_URL}{webhook_path}"
     
     logger.info(f"🚀 Starting webhook on port {PORT}")
     logger.info(f"📡 Webhook URL: {full_webhook_url}")
     
-    # Use PTB's built-in webhook server
     await app.initialize()
     await app.bot.set_webhook(url=full_webhook_url, allowed_updates=Update.ALL_TYPES)
     await app.start()
     
-    # Create aiohttp web app for webhook
     async def handle_webhook(request):
         try:
             data = await request.json()
@@ -456,13 +413,11 @@ async def run_webhook():
     async def index(request):
         return web.Response(text="Bot is running!")
     
-    # Setup aiohttp app
     webapp = web.Application()
     webapp.router.add_post(webhook_path, handle_webhook)
     webapp.router.add_get("/health", health_check)
     webapp.router.add_get("/", index)
     
-    # Run the web server
     runner = web.AppRunner(webapp)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
@@ -470,7 +425,6 @@ async def run_webhook():
     
     logger.info(f"✅ Webhook server running on port {PORT}")
     
-    # Keep running
     try:
         while True:
             await asyncio.sleep(3600)
@@ -485,7 +439,7 @@ def main():
     cleanup_temp_files()
     logger.info("🤖 Bot starting...")
     
-    if USE_WEBHOOK and WEBHOOK_URL and AIOHTTP_WEB_AVAILABLE:
+    if USE_WEBHOOK and WEBHOOK_URL:
         logger.info("🚀 Webhook mode")
         asyncio.run(run_webhook())
     else:
