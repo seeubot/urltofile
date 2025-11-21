@@ -13,14 +13,22 @@ import requests
 from urllib.parse import urlparse
 import math
 import aiohttp
-from flask import Flask, request
 import threading
+
+# Try to import Flask for webhook support (optional)
+try:
+    from flask import Flask, request
+    FLASK_AVAILABLE = True
+except ImportError:
+    FLASK_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("Flask not installed. Webhook mode will not be available.")
 
 # Configuration from environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN', '7545348868:AAGKlDigB-trWf2lgpz5CLFFsMZvK2VXPLs')
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://naya:naya@cluster0.spxgavf.mongodb.net/?appName=Cluster0')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://strict-mariam-seeutech-94fe58af.koyeb.app')  # Set this to your Koyeb URL
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')  # Set this to your Koyeb URL
 PORT = int(os.getenv('PORT', 8000))
 USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'false').lower() == 'true'
 
@@ -75,17 +83,17 @@ DEFAULT_ALLOWED_SITES = [
 
 def get_user_settings(user_id):
     """Get user settings from database"""
-    if not settings_collection:
+    if settings_collection is None:
         return {'watermark': ''}
     
     settings = settings_collection.find_one({'user_id': user_id})
-    if not settings:
+    if settings is None:
         return {'watermark': ''}
     return settings
 
 def update_user_watermark(user_id, watermark):
     """Update user's watermark setting"""
-    if not settings_collection:
+    if settings_collection is None:
         return False
     
     settings_collection.update_one(
@@ -97,17 +105,17 @@ def update_user_watermark(user_id, watermark):
 
 def get_allowed_sites(user_id):
     """Get user's allowed sites or default"""
-    if not allowed_sites_collection:
+    if allowed_sites_collection is None:
         return DEFAULT_ALLOWED_SITES
     
     doc = allowed_sites_collection.find_one({'user_id': user_id})
-    if not doc:
+    if doc is None:
         return DEFAULT_ALLOWED_SITES
     return doc.get('sites', DEFAULT_ALLOWED_SITES)
 
 def add_allowed_site(user_id, site):
     """Add a site to user's allowed list"""
-    if not allowed_sites_collection:
+    if allowed_sites_collection is None:
         return False
     
     allowed_sites_collection.update_one(
@@ -119,7 +127,7 @@ def add_allowed_site(user_id, site):
 
 def remove_allowed_site(user_id, site):
     """Remove a site from user's allowed list"""
-    if not allowed_sites_collection:
+    if allowed_sites_collection is None:
         return False
     
     allowed_sites_collection.update_one(
@@ -431,7 +439,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif query.data == 'show_stats':
         user_id = query.from_user.id
-        if downloads_collection:
+        if downloads_collection is not None:
             count = downloads_collection.count_documents({'user_id': user_id})
             text = f"📊 You've downloaded {count} videos!"
         else:
@@ -564,7 +572,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        if downloads_collection:
+        if downloads_collection is not None:
             downloads_collection.insert_one({
                 'user_id': user_id,
                 'original_url': url,
