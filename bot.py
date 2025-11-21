@@ -678,6 +678,9 @@ def cleanup_temp_files():
     except Exception as e:
         logger.error(f"Error cleaning temp files: {e}")
 
+# Global application variable
+application = None
+
 # Webhook handling
 @flask_app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
@@ -690,12 +693,15 @@ def webhook():
         # Process the update
         update = Update.de_json(request.get_json(force=True), application.bot)
         
-        # Use thread pool executor to run the async function
-        asyncio.run_coroutine_threadsafe(
-            application.process_update(update), 
-            application._get_running_loop()
-        )
-        return 'ok'
+        # Create a new event loop for this thread and process the update
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(application.process_update(update))
+            return 'ok'
+        finally:
+            loop.close()
+            
     except Exception as e:
         logger.error(f"Error in webhook: {e}")
         return 'error', 500
@@ -704,12 +710,9 @@ def webhook():
 def index():
     return 'Bot is running!'
 
-def run_flask():
-    """Run Flask app"""
-    flask_app.run(host='0.0.0.0', port=PORT, debug=False)
-
-# Global application variable
-application = None
+@flask_app.route('/health')
+def health():
+    return 'OK', 200
 
 def setup_application():
     """Setup and return the application with handlers"""
@@ -723,46 +726,61 @@ def setup_application():
     
     return app
 
+async def setup_webhook():
+    """Setup webhook asynchronously"""
+    global application
+    
+    if application is None:
+        application = setup_application()
+        await application.initialize()
+    
+    webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    await application.bot.set_webhook(webhook_url)
+    logger.info(f"✅ Webhook set to {webhook_url}")
+
+def run_flask():
+    """Run Flask app"""
+    flask_app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
+
 def main():
     """Start the bot"""
     global application
     
     cleanup_temp_files()
     
-    # Setup application
-    application = setup_application()
-    
     logger.info("🤖 Bot setup completed!")
     
     if USE_WEBHOOK and WEBHOOK_URL and FLASK_AVAILABLE:
         # Webhook mode
-        webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        logger.info("🚀 Starting in webhook mode...")
         
-        # Initialize the application first
-        application.initialize()
+        # Setup application
+        application = setup_application()
         
-        # Set webhook
+        # Initialize application and set webhook
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
         try:
-            loop.run_until_complete(application.bot.set_webhook(webhook_url))
-            logger.info(f"✅ Webhook set to {webhook_url}")
+            loop.run_until_complete(application.initialize())
+            logger.info("✅ Application initialized")
+            
+            loop.run_until_complete(setup_webhook())
+            
+            # Start Flask
+            logger.info(f"🚀 Starting Flask server on port {PORT}")
+            run_flask()
         except Exception as e:
-            logger.error(f"❌ Failed to set webhook: {e}")
-            return
-        
-        # Start Flask in main thread
-        logger.info(f"🚀 Starting Flask server on port {PORT}")
-        run_flask()
+            logger.error(f"❌ Error during initialization: {e}")
+        finally:
+            loop.close()
         
     else:
         # Polling mode
         logger.info("✅ Using polling mode")
+        application = setup_application()
         application.run_polling(
             allowed_updates=Update.ALL_TYPES, 
-            drop_pending_updates=True,
-            close_loop=False
+            drop_pending_updates=True
         )
 
 if __name__ == '__main__':
