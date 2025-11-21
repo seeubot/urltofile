@@ -22,7 +22,7 @@ MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://naya:naya@cluster0.spxgavf.mon
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://strict-mariam-seeutech-94fe58af.koyeb.app')  # Set this to your Koyeb URL
 PORT = int(os.getenv('PORT', 8000))
-USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'true').lower() == 'true'
+USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'false').lower() == 'true'
 
 # Telegram file size limits (in bytes)
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB for bots
@@ -62,9 +62,9 @@ def setup_mongodb():
         return None
 
 db = setup_mongodb()
-downloads_collection = db['downloads'] if db else None
-settings_collection = db['settings'] if db else None
-allowed_sites_collection = db['allowed_sites'] if db else None
+downloads_collection = db['downloads'] if db is not None else None
+settings_collection = db['settings'] if db is not None else None
+allowed_sites_collection = db['allowed_sites'] if db is not None else None
 
 # Default allowed sites
 DEFAULT_ALLOWED_SITES = [
