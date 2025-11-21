@@ -61,8 +61,8 @@ def setup_mongodb():
         return None
 
 db = setup_mongodb()
-downloads_collection = db['downloads'] if db else None
-settings_collection = db['settings'] if db else None
+downloads_collection = db['downloads'] if db is not None else None
+settings_collection = db['settings'] if db is not None else None
 
 def get_user_settings(user_id):
     if settings_collection is None:
