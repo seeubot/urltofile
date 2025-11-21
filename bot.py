@@ -13,9 +13,8 @@ import requests
 from urllib.parse import urlparse
 import math
 import aiohttp
-import threading
 
-# Try to import Flask for webhook support (optional)
+# Try to import Flask for webhook support
 try:
     from flask import Flask, request
     FLASK_AVAILABLE = True
@@ -30,7 +29,7 @@ MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://naya:naya@cluster0.spxgavf.mon
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')  # Set this to your Koyeb URL
 PORT = int(os.getenv('PORT', 8000))
-USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'false').lower() == 'true'
+USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'true').lower() == 'true'
 
 # Telegram file size limits (in bytes)
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB for bots
@@ -72,14 +71,6 @@ def setup_mongodb():
 db = setup_mongodb()
 downloads_collection = db['downloads'] if db is not None else None
 settings_collection = db['settings'] if db is not None else None
-allowed_sites_collection = db['allowed_sites'] if db is not None else None
-
-# Default allowed sites
-DEFAULT_ALLOWED_SITES = [
-    'youtube.com', 'youtu.be', 'twitter.com', 'x.com',
-    'instagram.com', 'facebook.com', 'tiktok.com', 'reddit.com',
-    'vimeo.com', 'dailymotion.com', 'twitch.tv'
-]
 
 def get_user_settings(user_id):
     """Get user settings from database"""
@@ -100,39 +91,6 @@ def update_user_watermark(user_id, watermark):
         {'user_id': user_id},
         {'$set': {'watermark': watermark}},
         upsert=True
-    )
-    return True
-
-def get_allowed_sites(user_id):
-    """Get user's allowed sites or default"""
-    if allowed_sites_collection is None:
-        return DEFAULT_ALLOWED_SITES
-    
-    doc = allowed_sites_collection.find_one({'user_id': user_id})
-    if doc is None:
-        return DEFAULT_ALLOWED_SITES
-    return doc.get('sites', DEFAULT_ALLOWED_SITES)
-
-def add_allowed_site(user_id, site):
-    """Add a site to user's allowed list"""
-    if allowed_sites_collection is None:
-        return False
-    
-    allowed_sites_collection.update_one(
-        {'user_id': user_id},
-        {'$addToSet': {'sites': site.lower()}},
-        upsert=True
-    )
-    return True
-
-def remove_allowed_site(user_id, site):
-    """Remove a site from user's allowed list"""
-    if allowed_sites_collection is None:
-        return False
-    
-    allowed_sites_collection.update_one(
-        {'user_id': user_id},
-        {'$pull': {'sites': site.lower()}}
     )
     return True
 
@@ -372,17 +330,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
     keyboard = [
         [InlineKeyboardButton("⚙️ Settings", callback_data='settings')],
-        [InlineKeyboardButton("🌐 Manage Sites", callback_data='manage_sites')],
         [InlineKeyboardButton("📊 Statistics", callback_data='show_stats')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     welcome_message = (
         "👋 Welcome to Stream Downloader Bot!\n\n"
-        "Send me a video URL and I'll:\n"
+        "Send me any video URL and I'll:\n"
         "1. Extract the streaming URL (multiple methods)\n"
         "2. Download the video\n"
         "3. Send it to you (split into parts if needed)\n\n"
+        "✅ Supports ALL video websites!\n"
         "Use the buttons below to configure the bot!"
     )
     await update.message.reply_text(welcome_message, reply_markup=reply_markup)
@@ -407,25 +365,6 @@ async def settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"⚙️ **Settings**\n\nCurrent Watermark: `{current_watermark}`"
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
 
-async def manage_sites_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show site management menu"""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    sites = get_allowed_sites(user_id)
-    
-    keyboard = [
-        [InlineKeyboardButton("➕ Add Site", callback_data='add_site')],
-        [InlineKeyboardButton("➖ Remove Site", callback_data='remove_site')],
-        [InlineKeyboardButton("📋 View Sites", callback_data='view_sites')],
-        [InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    text = f"🌐 **Site Management**\n\nYou have {len(sites)} allowed sites."
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle button callbacks"""
     query = update.callback_query
@@ -433,9 +372,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == 'settings':
         await settings_menu(update, context)
-    
-    elif query.data == 'manage_sites':
-        await manage_sites_menu(update, context)
     
     elif query.data == 'show_stats':
         user_id = query.from_user.id
@@ -463,36 +399,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(2)
         await settings_menu(update, context)
     
-    elif query.data == 'add_site':
-        await query.edit_message_text(
-            "➕ Send me the domain of the site you want to add.\n"
-            "Example: example.com"
-        )
-        context.user_data['awaiting_site_add'] = True
-    
-    elif query.data == 'remove_site':
-        await query.edit_message_text(
-            "➖ Send me the domain you want to remove.\n"
-            "Example: example.com"
-        )
-        context.user_data['awaiting_site_remove'] = True
-    
-    elif query.data == 'view_sites':
-        user_id = query.from_user.id
-        sites = get_allowed_sites(user_id)
-        sites_text = '\n• '.join(sites)
-        
-        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='manage_sites')]]
-        await query.edit_message_text(
-            f"📋 **Allowed Sites:**\n\n• {sites_text}",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-    
     elif query.data == 'back_to_main':
         keyboard = [
             [InlineKeyboardButton("⚙️ Settings", callback_data='settings')],
-            [InlineKeyboardButton("🌐 Manage Sites", callback_data='manage_sites')],
             [InlineKeyboardButton("📊 Statistics", callback_data='show_stats')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -513,22 +422,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['awaiting_watermark'] = False
         return
     
-    # Check if awaiting site addition
-    if context.user_data.get('awaiting_site_add'):
-        domain = text.lower().replace('http://', '').replace('https://', '').split('/')[0]
-        add_allowed_site(user_id, domain)
-        await update.message.reply_text(f"✅ Added {domain} to allowed sites!")
-        context.user_data['awaiting_site_add'] = False
-        return
-    
-    # Check if awaiting site removal
-    if context.user_data.get('awaiting_site_remove'):
-        domain = text.lower().replace('http://', '').replace('https://', '').split('/')[0]
-        remove_allowed_site(user_id, domain)
-        await update.message.reply_text(f"✅ Removed {domain} from allowed sites!")
-        context.user_data['awaiting_site_remove'] = False
-        return
-    
     # Otherwise treat as URL
     await handle_url(update, context)
 
@@ -542,17 +435,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = urlparse(url)
         if not all([result.scheme, result.netloc]):
             await update.message.reply_text("❌ Invalid URL. Please send a valid video URL.")
-            return
-        
-        # Check if site is allowed
-        allowed_sites = get_allowed_sites(user_id)
-        domain = result.netloc.lower().replace('www.', '')
-        
-        if not any(site in domain for site in allowed_sites):
-            await update.message.reply_text(
-                f"❌ Site '{domain}' is not in your allowed list.\n"
-                "Use /start → Manage Sites to add it."
-            )
             return
             
     except Exception:
@@ -658,12 +540,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Start the bot and access menu\n"
         "/help - Show this help message\n\n"
         "**Features:**\n"
+        "• Supports ALL video websites\n"
         "• Multiple extraction methods\n"
         "• Custom watermarks\n"
-        "• Site whitelist management\n"
         "• Automatic file splitting\n"
         "• Download statistics\n\n"
-        "Just send a video URL to get started!"
+        "Just send any video URL to get started!"
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -751,7 +633,7 @@ def main():
     logger.info("🤖 Bot setup completed!")
     
     if USE_WEBHOOK and WEBHOOK_URL and FLASK_AVAILABLE:
-        # Webhook mode
+        # Webhook mode - optimized for Koyeb
         logger.info("🚀 Starting in webhook mode...")
         
         # Setup application
@@ -761,21 +643,25 @@ def main():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
+            # Initialize the application
             loop.run_until_complete(application.initialize())
             logger.info("✅ Application initialized")
             
+            # Set webhook
             loop.run_until_complete(setup_webhook())
+            logger.info("✅ Webhook configured")
             
-            # Start Flask
+            # Start Flask in the main thread
             logger.info(f"🚀 Starting Flask server on port {PORT}")
             run_flask()
+            
         except Exception as e:
             logger.error(f"❌ Error during initialization: {e}")
         finally:
             loop.close()
         
     else:
-        # Polling mode
+        # Polling mode (fallback)
         logger.info("✅ Using polling mode")
         application = setup_application()
         application.run_polling(
