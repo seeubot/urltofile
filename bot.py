@@ -14,15 +14,15 @@ import aiohttp
 from aiohttp import web
 
 # Configuration
-BOT_TOKEN = os.getenv('BOT_TOKEN', '7545348868:AAGKlDigB-trWf2lgpz5CLFFsMZvK2VXPLs')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '7545348868:AAGKlDigB-trWf2lgpz5CLFFsMZK2VXPLs')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 PORT = int(os.getenv('PORT', 8000))
 USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'true').lower() == 'true'
 
 # Telegram file size limits
-MAX_FILE_SIZE = 50 * 1024 * 1024
-CHUNK_SIZE = 45 * 1024 * 1024
+MAX_FILE_SIZE = 50 * 1024 * 1024 # Standard limit for media upload
+CHUNK_SIZE = 45 * 1024 * 1024 # Used for splitting large files
 
 # Setup logging
 logging.basicConfig(
@@ -53,6 +53,7 @@ def get_download_count(user_id):
 
 def extract_streaming_url_method1(url):
     ydl_opts = {
+        # Prioritize files under 500M and progressive formats for better compatibility
         'format': 'best[filesize<500M]/bestvideo[filesize<500M]+bestaudio/best',
         'quiet': True,
         'no_warnings': True,
@@ -65,8 +66,10 @@ def extract_streaming_url_method1(url):
             if 'url' in info:
                 streaming_url = info['url']
             elif 'formats' in info:
+                # Try to find a progressive format first
                 progressive = [f for f in info['formats'] 
                               if f.get('acodec') != 'none' and f.get('vcodec') != 'none']
+                # Take the best progressive format, or the last format if no progressive found
                 streaming_url = progressive[-1]['url'] if progressive else info['formats'][-1]['url']
             else:
                 return None
@@ -83,6 +86,7 @@ def extract_streaming_url_method1(url):
 
 def extract_streaming_url_method2(url):
     ydl_opts = {
+        # Target mp4 specifically, which is highly compatible with Telegram
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'quiet': True,
         'no_warnings': True,
@@ -108,6 +112,7 @@ def extract_streaming_url_method2(url):
 
 def extract_streaming_url_method3(url):
     ydl_opts = {
+        # Fallback to worst quality mp4 as a last resort
         'format': 'worst[ext=mp4]/worst',
         'quiet': True,
         'no_warnings': True,
@@ -130,6 +135,7 @@ def extract_streaming_url_method3(url):
     return None
 
 def extract_streaming_url(url):
+    """Tries multiple methods to extract a streamable URL."""
     for method in [extract_streaming_url_method1, extract_streaming_url_method2, extract_streaming_url_method3]:
         result = method(url)
         if result:
@@ -138,6 +144,7 @@ def extract_streaming_url(url):
     return None
 
 async def download_file_async(url, filename, max_size_mb=500, watermark=''):
+    """Asynchronously downloads the file, optionally adds a watermark."""
     try:
         timeout = aiohttp.ClientTimeout(total=300)
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -159,6 +166,8 @@ async def download_file_async(url, filename, max_size_mb=500, watermark=''):
                             return None
                 if watermark:
                     try:
+                        # Watermarking is synchronous (subprocess), so we run it in a thread pool executor
+                        # This should ideally be wrapped in run_in_executor if not natively async
                         result = await add_watermark(filepath, watermark)
                         if result:
                             return result
@@ -170,27 +179,39 @@ async def download_file_async(url, filename, max_size_mb=500, watermark=''):
         return None
 
 async def add_watermark(filepath, watermark_text):
+    """Adds a simple text watermark to the video using ffmpeg."""
     try:
         import subprocess
+        # Check if ffmpeg is available
         if subprocess.run(['which', 'ffmpeg'], capture_output=True).returncode != 0:
+            logger.warning("ffmpeg not found, skipping watermark.")
             return filepath
-        output = filepath.replace('.mp4', '_wm.mp4')
+        
+        output = filepath.replace(os.path.splitext(filepath)[1], f'_wm{os.path.splitext(filepath)[1]}')
+        
+        # Simple drawtext filter for bottom-right corner
         cmd = [
             'ffmpeg', '-i', filepath, '-vf',
-            f"drawtext=text='{watermark_text}':fontcolor=white:fontsize=24:x=10:y=H-th-10",
-            '-codec:a', 'copy', output
+            f"drawtext=text='{watermark_text}':fontcolor=white@0.8:fontsize=24:x=W-tw-10:y=H-th-10:box=1:boxcolor=black@0.4",
+            '-c:a', 'copy', output, '-y' # -y to overwrite output if exists
         ]
+        
+        # Run ffmpeg command asynchronously
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         await proc.communicate()
+        
         if proc.returncode == 0 and os.path.exists(output):
             os.remove(filepath)
             return output
+        
+        logger.error(f"ffmpeg failed with return code {proc.returncode}")
         return filepath
     except Exception as e:
-        logger.error(f"Watermark error: {e}")
+        logger.error(f"Watermark processing error: {e}")
         return filepath
 
 def split_file(filepath, chunk_size=CHUNK_SIZE):
+    """Splits a large file into smaller chunks."""
     try:
         file_size = os.path.getsize(filepath)
         num_chunks = math.ceil(file_size / chunk_size)
@@ -236,7 +257,7 @@ async def settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]
     ]
     await query.edit_message_text(
-        f"⚙️ **Settings**\n\nCurrent Watermark: `{watermark}`",
+        f"⚙️ **Settings**\n\nCurrent Watermark: `{watermark}`\n\nNote: Watermarking requires the `ffmpeg` tool to be installed on the server.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -258,7 +279,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     elif query.data == 'set_watermark':
         await query.edit_message_text(
-            "💧 Send me the watermark text you want to add.\nExample: @YourChannel"
+            "💧 Send me the watermark text you want to add.\nExample: `@YourChannel`"
         )
         context.user_data['awaiting_watermark'] = True
     elif query.data == 'clear_watermark':
@@ -281,7 +302,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if context.user_data.get('awaiting_watermark'):
         update_user_watermark(user_id, text)
-        await update.message.reply_text(f"✅ Watermark set to: {text}")
+        await update.message.reply_text(f"✅ Watermark set to: `{text}`", parse_mode='Markdown')
         context.user_data['awaiting_watermark'] = False
         return
     await handle_url(update, context)
@@ -299,6 +320,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     status_msg = await update.message.reply_text("🔍 Processing...")
+    filepath = None # Initialize filepath for cleanup in finally block
     try:
         await status_msg.edit_text("🔗 Extracting streaming URL...")
         info = extract_streaming_url(url)
@@ -311,31 +333,40 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"⬇️ Downloading: {info['title']}...")
         settings = get_user_settings(user_id)
         watermark = settings.get('watermark', '')
-        filename = re.sub(r'[<>:\"/\\|?*]', '_', f"{info['title']}.{info['ext']}")[:100]
+        # Sanitize and truncate filename
+        filename_base = re.sub(r'[<>:\"/\\|?*]', '_', info['title'])
+        filename = f"{filename_base[:96]}.{info['ext']}" # Limit filename length
+        
+        # Download the file, max 500MB
         filepath = await download_file_async(info['url'], filename, 500, watermark)
         
         if not filepath:
-            await status_msg.edit_text("❌ Download failed. File too large or unavailable.")
+            await status_msg.edit_text("❌ Download failed. File too large (>500MB) or unavailable.")
             return
         
         file_size = os.path.getsize(filepath)
+        caption = f"{info['title']}"
+        if watermark:
+             caption += f"\n\nWatermark: {watermark}"
+
         if file_size > MAX_FILE_SIZE:
+            # File is larger than 50MB, needs splitting and sending as document chunks
             await status_msg.edit_text(f"📦 Splitting large file ({file_size/(1024*1024):.1f}MB)...")
             chunks = split_file(filepath)
             if not chunks:
                 await status_msg.edit_text("❌ Failed to split file.")
-                if os.path.exists(filepath):
-                    os.remove(filepath)
                 return
             
-            await status_msg.edit_text(f"📤 Sending {len(chunks)} parts...")
+            await status_msg.edit_text(f"📤 Sending {len(chunks)} parts as documents...")
             for i, chunk in enumerate(chunks, 1):
                 try:
+                    chunk_name = f"{filename_base}_part{i}.{info['ext']}"
                     with open(chunk, 'rb') as f:
+                        # Chunks must be sent as documents
                         await update.message.reply_document(
                             document=f,
-                            filename=f"{info['title']}_part{i}.{info['ext']}",
-                            caption=f"Part {i}/{len(chunks)}"
+                            filename=chunk_name,
+                            caption=f"Part {i}/{len(chunks)}\n{caption}"
                         )
                 except Exception as e:
                     logger.error(f"Send part {i} error: {e}")
@@ -344,20 +375,39 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         os.remove(chunk)
             await status_msg.edit_text(f"✅ Sent {len(chunks)} parts!")
         else:
-            await status_msg.edit_text("📤 Sending...")
+            # File is 50MB or less, send as a playable video
+            await status_msg.edit_text("📤 Sending as video...")
             try:
                 with open(filepath, 'rb') as f:
-                    caption = f"{info['title']}\n\n{watermark}" if watermark else info['title']
-                    await update.message.reply_document(document=f, filename=filename, caption=caption)
+                    # CRITICAL CHANGE: Use reply_video for inline playback
+                    await update.message.reply_video(
+                        video=f, 
+                        filename=filename, 
+                        caption=caption
+                    )
                 await status_msg.edit_text("✅ Done!")
             except Exception as e:
-                await status_msg.edit_text(f"❌ Send failed: {e}")
-        
-        if os.path.exists(filepath):
-            os.remove(filepath)
+                # Fallback in case the video format is incompatible for reply_video
+                logger.error(f"Video send failed, falling back to document: {e}")
+                await status_msg.edit_text(f"❌ Video send failed (incompatible format), trying as Document...")
+                try:
+                    with open(filepath, 'rb') as f_fallback:
+                        await update.message.reply_document(
+                            document=f_fallback, 
+                            filename=filename, 
+                            caption=caption + "\n(Sent as Document due to video error)"
+                        )
+                    await status_msg.edit_text("✅ Done (Sent as Document)!")
+                except Exception as e_fallback:
+                    await status_msg.edit_text(f"❌ Send failed completely: {e_fallback}")
     except Exception as e:
-        await status_msg.edit_text(f"❌ Error: {e}")
+        await status_msg.edit_text(f"❌ An unexpected error occurred: {e}")
         logger.error(f"URL processing error: {e}")
+    finally:
+        # Clean up the original file after processing (whether split or sent whole)
+        if filepath and os.path.exists(filepath):
+            os.remove(filepath)
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -449,3 +499,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
