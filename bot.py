@@ -14,7 +14,7 @@ import aiohttp
 from aiohttp import web
 
 # Configuration
-BOT_TOKEN = os.getenv('BOT_TOKEN', '7545348868:AAGKlDigB-trWf2lgpz5CLFFsMZvK2VXPLs')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8370816170:AAEDqSZLLPXpCBSCfK0Y1hrJfK0JNl1ag0Y')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 PORT = int(os.getenv('PORT', 8000))
