@@ -3,323 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Downloader Bot</title>
+    <title>Stream Viewer</title>
+    <!-- Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        /* Apply smooth transitions and font */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s ease;
         }
-
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
+        /* Style the video element for full container width/height */
+        #video-player {
             width: 100%;
-            padding: 40px;
-            animation: slideUp 0.5s ease-out;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
-        .header h1 {
-            color: #667eea;
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            color: #666;
-            font-size: 16px;
-        }
-
-        .icon {
-            font-size: 60px;
-            margin-bottom: 20px;
-        }
-
-        .form-group {
-            margin-bottom: 30px;
-        }
-
-        label {
-            display: block;
-            color: #333;
-            font-weight: 600;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        input[type="url"] {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 16px;
-            transition: all 0.3s ease;
-        }
-
-        input[type="url"]:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn:active {
-            transform: translateY(0);
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .message {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        .message.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .message.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .message.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-
-        .features {
-            margin-top: 40px;
-            padding-top: 30px;
-            border-top: 2px solid #f0f0f0;
-        }
-
-        .features h3 {
-            color: #333;
-            margin-bottom: 20px;
-            font-size: 20px;
-        }
-
-        .feature-list {
-            list-style: none;
-        }
-
-        .feature-list li {
-            padding: 10px 0;
-            color: #666;
-            font-size: 14px;
-        }
-
-        .feature-list li:before {
-            content: "✓";
-            color: #667eea;
-            font-weight: bold;
-            margin-right: 10px;
-        }
-
-        .telegram-link {
-            text-align: center;
-            margin-top: 30px;
-        }
-
-        .telegram-link a {
-            display: inline-block;
-            padding: 12px 30px;
-            background: #0088cc;
-            color: white;
-            text-decoration: none;
-            border-radius: 25px;
-            font-weight: 600;
-            transition: background 0.3s ease;
-        }
-
-        .telegram-link a:hover {
-            background: #006699;
+            max-height: 90vh; /* Limit height slightly */
+            background-color: #000;
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="icon">🎬</div>
-            <h1>Video Downloader Bot</h1>
-            <p>Download videos from any platform instantly</p>
-        </div>
+<body class="bg-gray-100 dark:bg-gray-900 min-h-screen p-4 flex flex-col items-center justify-center">
 
-        <form id="downloadForm">
-            <div class="form-group">
-                <label for="videoUrl">Enter Video URL</label>
-                <input 
-                    type="url" 
-                    id="videoUrl" 
-                    name="videoUrl" 
-                    placeholder="https://example.com/video" 
-                    required
-                >
-            </div>
-
-            <button type="submit" class="btn" id="submitBtn">
-                📥 Send to Bot
+    <div class="w-full max-w-4xl bg-white dark:bg-gray-800 shadow-2xl rounded-xl overflow-hidden p-0">
+        
+        <header class="p-4 bg-indigo-600 dark:bg-indigo-700 text-white flex justify-between items-center">
+            <h1 class="text-xl font-bold">
+                <span class="inline-block align-middle mr-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </span>
+                Live Stream Player
+            </h1>
+            <!-- Close Button for Telegram Web App -->
+            <button id="close-btn" class="text-white hover:text-gray-200 transition duration-150 p-2 rounded-full hover:bg-indigo-500">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
-        </form>
+        </header>
 
-        <div id="message" class="message"></div>
-
-        <div class="telegram-link">
-            <a href="https://t.me/YOUR_BOT_USERNAME" target="_blank" id="telegramLink">
-                📱 Open in Telegram
-            </a>
-        </div>
-
-        <div class="features">
-            <h3>✨ Features</h3>
-            <ul class="feature-list">
-                <li>Download from ANY video platform</li>
-                <li>5-second preview clips automatically generated</li>
-                <li>Videos play directly in Telegram</li>
-                <li>High-quality downloads with thumbnails</li>
-                <li>Auto-splits large files for easy delivery</li>
-                <li>Fast and reliable processing</li>
-            </ul>
-        </div>
+        <main class="p-4">
+            <!-- Video Element -->
+            <video id="video-player" controls autoplay class="rounded-lg shadow-xl mb-4"></video>
+            
+            <!-- Status/Message Area -->
+            <div id="status-message" class="text-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                Attempting to fetch stream URL...
+            </div>
+            
+            <div id="current-url" class="mt-4 text-sm text-center text-gray-500 dark:text-gray-400 break-words hidden"></div>
+        </main>
     </div>
 
     <script>
-        // Configuration - Replace with your actual bot username and chat ID
-        const BOT_USERNAME = 'myworkdbot'; // Replace with your bot username (without @)
-        const CHAT_ID = 'YOUR_CHAT_ID'; // Replace with your Telegram chat ID
-
-        // Update the Telegram link
-        document.getElementById('telegramLink').href = `https://t.me/${BOT_USERNAME}`;
-
-        const form = document.getElementById('downloadForm');
-        const messageDiv = document.getElementById('message');
-        const submitBtn = document.getElementById('submitBtn');
-
-        function showMessage(text, type) {
-            messageDiv.textContent = text;
-            messageDiv.className = `message ${type}`;
-            messageDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                messageDiv.style.display = 'none';
-            }, 5000);
-        }
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const videoUrl = document.getElementById('videoUrl').value.trim();
-            
-            if (!videoUrl) {
-                showMessage('Please enter a valid URL', 'error');
-                return;
+        const videoPlayer = document.getElementById('video-player');
+        const statusMessage = document.getElementById('status-message');
+        const currentUrlDisplay = document.getElementById('current-url');
+        const closeBtn = document.getElementById('close-btn');
+        
+        // Telegram WebApp Close functionality (if running inside Telegram)
+        closeBtn.onclick = () => {
+            if (window.Telegram && window.Telegram.WebApp) {
+                window.Telegram.WebApp.close();
+            } else {
+                alert("This button only works when launched inside the Telegram app.");
             }
+        };
 
-            // Validate URL format
+        // Function to fetch the stream URL from the bot's server
+        async function fetchStreamUrl() {
             try {
-                new URL(videoUrl);
-            } catch (e) {
-                showMessage('Invalid URL format', 'error');
-                return;
-            }
-
-            // Disable button during processing
-            submitBtn.disabled = true;
-            submitBtn.textContent = '⏳ Sending...';
-
-            try {
-                // Open Telegram with the URL
-                const telegramUrl = `https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(videoUrl)}`;
-                window.open(telegramUrl, '_blank');
+                statusMessage.textContent = 'Fetching current stream configuration...';
                 
-                showMessage('✅ Opening Telegram... Paste this URL in the chat: ' + videoUrl, 'success');
+                // Fetch from the relative endpoint /get_stream hosted by the bot's webhook server
+                const response = await fetch('/get_stream'); 
                 
-                // Alternative: Copy to clipboard
-                if (navigator.clipboard) {
-                    await navigator.clipboard.writeText(videoUrl);
-                    showMessage('✅ URL copied! Opening Telegram... Just paste it in the chat!', 'success');
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const streamUrl = data.streamUrl;
+
+                if (streamUrl) {
+                    videoPlayer.src = streamUrl;
+                    videoPlayer.load();
+                    
+                    statusMessage.className = 'text-center p-3 rounded-lg bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300';
+                    statusMessage.textContent = 'Stream loaded successfully!';
+                    
+                    currentUrlDisplay.textContent = `Source: ${streamUrl}`;
+                    currentUrlDisplay.classList.remove('hidden');
+
+                } else {
+                    statusMessage.className = 'text-center p-3 rounded-lg bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300';
+                    statusMessage.textContent = 'Stream URL not found or empty. Admin needs to set it.';
+                    currentUrlDisplay.classList.add('hidden');
                 }
 
             } catch (error) {
-                console.error('Error:', error);
-                showMessage('⚠️ Please copy the URL and send it manually in Telegram', 'info');
-            } finally {
-                // Re-enable button
-                setTimeout(() => {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = '📥 Send to Bot';
-                }, 2000);
-            }
-        });
+                console.error("Error fetching stream URL:", error);
+                statusMessage.className = 'text-center p-3 rounded-lg bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300';
+                statusMessage.textContent = `Error loading stream: ${error.message}.`;
+                currentUrlDisplay.classList.add('hidden');
+                
+                // Fallback message for user
+                videoPlayer.style.display = 'none';
+                
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.className = 'mt-4 p-4 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg';
+                fallbackDiv.innerHTML = '<p class="font-semibold text-red-800 dark:text-red-200">Playback Failed. Check if the admin has set a valid stream URL using the /setstream command.</p>';
+                document.querySelector('main').insertBefore(fallbackDiv, statusMessage.nextSibling);
 
-        // Alternative: Direct Telegram Deep Link (if user is logged in)
-        function sendToTelegram(url) {
-            const message = encodeURIComponent(url);
-            const telegramUrl = `tg://resolve?domain=${BOT_USERNAME}&text=${message}`;
-            window.location.href = telegramUrl;
+            }
         }
+        
+        // Event listeners for video errors
+        videoPlayer.onerror = (e) => {
+            console.error("Video element error:", e);
+            statusMessage.className = 'text-center p-3 rounded-lg bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300';
+            statusMessage.textContent = 'Video playback error! The URL may be invalid or the format unsupported.';
+        };
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', fetchStreamUrl);
     </script>
 </body>
 </html>
