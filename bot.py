@@ -219,6 +219,55 @@ async def add_watermark(filepath, watermark_text):
         logger.error(f"Watermark error: {e}")
         return filepath
 
+async def generate_clip(filepath, duration=5):
+    """Generate a 5-second clip from the video"""
+    try:
+        import subprocess
+        if subprocess.run(['which', 'ffmpeg'], capture_output=True).returncode != 0:
+            logger.warning("ffmpeg not available for clip generation")
+            return None
+        
+        # Get video duration first
+        probe_cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 
+            'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *probe_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        
+        try:
+            video_duration = float(stdout.decode().strip())
+        except (ValueError, AttributeError):
+            video_duration = 30  # Default fallback
+        
+        # Calculate start time (middle of video)
+        start_time = max(0, (video_duration - duration) / 2)
+        
+        # Generate clip
+        name, ext = os.path.splitext(filepath)
+        clip_path = f"{name}_clip{ext}"
+        
+        cmd = [
+            'ffmpeg', '-ss', str(start_time), '-i', filepath,
+            '-t', str(duration), '-c:v', 'libx264', '-c:a', 'aac',
+            '-preset', 'ultrafast', '-crf', '28',
+            '-y', clip_path
+        ]
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
+        
+        if proc.returncode == 0 and os.path.exists(clip_path):
+            return clip_path
+        return None
+    except Exception as e:
+        logger.error(f"Clip generation error: {e}")
+        return None
+
 def split_file(filepath, chunk_size=CHUNK_SIZE):
     try:
         file_size = os.path.getsize(filepath)
@@ -251,7 +300,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 Welcome to Stream Downloader Bot!\n\n"
         "Send me any video URL and I'll download it for you.\n\n"
         "✅ Supports ALL video websites!\n"
-        "🎬 Videos play directly in Telegram!",
+        "🎬 Videos play directly in Telegram!\n"
+        "✂️ Auto-generates 5-second preview clips!\n"
+        "💧 Add custom watermarks!\n\n"
+        "Just paste a video link to start!",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -355,7 +407,38 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("❌ Download failed. File too large or unavailable.")
             return
         
+        # Generate 5-second clip
+        clip_path = None
+        if info.get('duration', 0) > 5:  # Only generate clip if video is longer than 5 seconds
+            try:
+                await status_msg.edit_text("✂️ Generating 5-second preview clip...")
+                clip_path = await generate_clip(filepath, duration=5)
+            except Exception as e:
+                logger.error(f"Clip generation failed: {e}")
+        
         file_size = os.path.getsize(filepath)
+        
+        # Send the 5-second clip first if available
+        if clip_path and os.path.exists(clip_path):
+            try:
+                await status_msg.edit_text("📤 Sending 5-second preview...")
+                with open(clip_path, 'rb') as f:
+                    await update.message.reply_video(
+                        video=f,
+                        caption=f"🎬 5-sec Preview: {info['title'][:50]}",
+                        duration=5,
+                        width=info.get('width', 0),
+                        height=info.get('height', 0),
+                        thumbnail=open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None,
+                        supports_streaming=True,
+                        filename=f"clip_{filename}"
+                    )
+            except Exception as e:
+                logger.error(f"Clip send error: {e}")
+            finally:
+                if os.path.exists(clip_path):
+                    os.remove(clip_path)
+        
         if file_size > MAX_FILE_SIZE:
             await status_msg.edit_text(f"📦 Splitting large file ({file_size/(1024*1024):.1f}MB)...")
             chunks = split_file(filepath)
@@ -369,12 +452,21 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i, chunk in enumerate(chunks, 1):
                 try:
                     with open(chunk, 'rb') as f:
-                        # For split files, send as documents
-                        await update.message.reply_document(
-                            document=f,
-                            filename=f"{info['title']}_part{i}.{info['ext']}",
-                            caption=f"Part {i}/{len(chunks)}"
-                        )
+                        # Try to detect if it's a video format to send as video
+                        chunk_ext = os.path.splitext(chunk)[1].lower()
+                        if chunk_ext in ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v']:
+                            await update.message.reply_video(
+                                video=f,
+                                caption=f"Part {i}/{len(chunks)}",
+                                supports_streaming=True,
+                                filename=f"{info['title']}_part{i}{chunk_ext}"
+                            )
+                        else:
+                            await update.message.reply_document(
+                                document=f,
+                                filename=f"{info['title']}_part{i}.{info['ext']}",
+                                caption=f"Part {i}/{len(chunks)}"
+                            )
                 except Exception as e:
                     logger.error(f"Send part {i} error: {e}")
                 finally:
@@ -382,23 +474,36 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         os.remove(chunk)
             await status_msg.edit_text(f"✅ Sent {len(chunks)} parts!")
         else:
-            await status_msg.edit_text("📤 Sending video...")
+            await status_msg.edit_text("📤 Sending full video...")
             try:
                 with open(filepath, 'rb') as f:
-                    caption = f"{info['title']}\n\n{watermark}" if watermark else info['title']
+                    caption = f"🎥 Full Video: {info['title']}\n\n{watermark}" if watermark else f"🎥 Full Video: {info['title']}"
                     
-                    # Send as VIDEO instead of document
-                    await update.message.reply_video(
-                        video=f,
-                        caption=caption[:1024],  # Telegram caption limit
-                        duration=int(info.get('duration', 0)),
-                        width=info.get('width', 0),
-                        height=info.get('height', 0),
-                        thumbnail=open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None,
-                        supports_streaming=True,  # Enable streaming playback
-                        filename=filename
-                    )
-                await status_msg.edit_text("✅ Video sent!")
+                    # Detect file extension to determine if it's a video format
+                    file_ext = os.path.splitext(filepath)[1].lower()
+                    video_formats = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v', '.3gp', '.ogv']
+                    
+                    if file_ext in video_formats:
+                        # Send as VIDEO for better playback
+                        await update.message.reply_video(
+                            video=f,
+                            caption=caption[:1024],
+                            duration=int(info.get('duration', 0)),
+                            width=info.get('width', 0),
+                            height=info.get('height', 0),
+                            thumbnail=open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None,
+                            supports_streaming=True,
+                            filename=filename
+                        )
+                    else:
+                        # Fallback to document for unknown formats
+                        await update.message.reply_document(
+                            document=f,
+                            caption=caption[:1024],
+                            filename=filename,
+                            thumbnail=open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None
+                        )
+                await status_msg.edit_text("✅ Video sent successfully!")
             except Exception as e:
                 await status_msg.edit_text(f"❌ Send failed: {e}")
                 logger.error(f"Send video error: {e}")
@@ -408,6 +513,8 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(filepath)
         if thumb_path and os.path.exists(thumb_path):
             os.remove(thumb_path)
+        if clip_path and os.path.exists(clip_path):
+            os.remove(clip_path)
             
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {e}")
@@ -416,9 +523,16 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 **Stream Downloader Bot**\n\n"
-        "/start - Start bot\n/help - Help\n\n"
-        "Just send any video URL!\n"
-        "Videos will play directly in Telegram 🎬",
+        "Commands:\n"
+        "/start - Start bot\n"
+        "/help - Help\n\n"
+        "Features:\n"
+        "✅ Download from ANY video website\n"
+        "🎬 Videos play directly in Telegram\n"
+        "✂️ Auto-generates 5-second preview clips\n"
+        "💧 Add custom watermarks\n"
+        "📦 Auto-splits large files\n\n"
+        "Just send any video URL to get started!",
         parse_mode='Markdown'
     )
 
