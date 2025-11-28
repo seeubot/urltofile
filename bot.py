@@ -2,7 +2,7 @@ import os
 import re
 import asyncio
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     filters, ContextTypes, CallbackQueryHandler
@@ -15,7 +15,7 @@ from aiohttp import web
 
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8370816170:AAEDqSZLLPXpCBSCfK0Y1hrJfK0JNl1ag0Y')
-BOT_USERNAME = os.getenv('BOT_USERNAME', 'myworkdbot')  # Set your bot username here
+BOT_USERNAME = os.getenv('BOT_USERNAME', 'myworkdbot')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://strict-mariam-seeutech-94fe58af.koyeb.app')
 PORT = int(os.getenv('PORT', 8000))
@@ -24,6 +24,9 @@ USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'true').lower() == 'true'
 # Telegram file size limits
 MAX_FILE_SIZE = 50 * 1024 * 1024
 CHUNK_SIZE = 45 * 1024 * 1024
+
+# Admin Configuration
+ADMIN_ID = 1352497419
 
 # Setup logging
 logging.basicConfig(
@@ -36,6 +39,9 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 # In-memory storage (resets on restart)
 download_counts = {}
+current_stream_url = "https://cdn.jsdelivr.net/gh/Dmitriy-I/cdn-media/big-buck-bunny/trailer.mp4"
+
+# ============= DOWNLOAD BOT FUNCTIONS =============
 
 def increment_download(user_id):
     download_counts[user_id] = download_counts.get(user_id, 0) + 1
@@ -58,7 +64,6 @@ def extract_streaming_url_method1(url):
             if 'url' in info:
                 streaming_url = info['url']
             elif 'formats' in info:
-                # Prefer progressive formats (video+audio in one)
                 progressive = [f for f in info['formats'] 
                               if f.get('acodec') != 'none' and f.get('vcodec') != 'none' 
                               and f.get('ext') == 'mp4']
@@ -101,7 +106,7 @@ def extract_streaming_url_method2(url):
             return {
                 'url': streaming_url,
                 'title': info.get('title', 'video'),
-                'ext': 'mp4',  # Force mp4 extension
+                'ext': 'mp4',
                 'filesize': info.get('filesize', 0),
                 'duration': info.get('duration', 0),
                 'width': info.get('width', 0),
@@ -150,7 +155,6 @@ def extract_streaming_url(url):
     return None
 
 async def download_thumbnail(url, filename):
-    """Download video thumbnail"""
     if not url:
         return None
     try:
@@ -192,7 +196,6 @@ async def download_file_async(url, filename, max_size_mb=500):
         return None
 
 async def convert_to_mp4(filepath):
-    """Convert video to MP4 format if needed"""
     try:
         import subprocess
         if subprocess.run(['which', 'ffmpeg'], capture_output=True).returncode != 0:
@@ -207,7 +210,7 @@ async def convert_to_mp4(filepath):
             'ffmpeg', '-i', filepath,
             '-c:v', 'libx264', '-c:a', 'aac',
             '-preset', 'fast', '-crf', '23',
-            '-movflags', '+faststart',  # Enable streaming
+            '-movflags', '+faststart',
             '-y', output
         ]
         
@@ -225,14 +228,12 @@ async def convert_to_mp4(filepath):
         return filepath
 
 async def generate_clip(filepath, duration=5):
-    """Generate a 5-second clip from the video"""
     try:
         import subprocess
         if subprocess.run(['which', 'ffmpeg'], capture_output=True).returncode != 0:
             logger.warning("ffmpeg not available for clip generation")
             return None
         
-        # Get video duration first
         probe_cmd = [
             'ffprobe', '-v', 'error', '-show_entries', 
             'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath
@@ -247,10 +248,7 @@ async def generate_clip(filepath, duration=5):
         except (ValueError, AttributeError):
             video_duration = 30
         
-        # Calculate start time (middle of video)
         start_time = max(0, (video_duration - duration) / 2)
-        
-        # Generate clip
         name = os.path.splitext(filepath)[0]
         clip_path = f"{name}_clip.mp4"
         
@@ -297,71 +295,83 @@ def split_file(filepath, chunk_size=CHUNK_SIZE):
         logger.error(f"Split error: {e}")
         return []
 
+# ============= COMMAND HANDLERS =============
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    
+    if user_id == ADMIN_ID:
+        admin_message = (
+            "👑 **Admin Panel**\n"
+            "Use `/setstream <url>` to change the live stream URL.\n\n"
+        )
+    else:
+        admin_message = ""
+    
     keyboard = [
-        [InlineKeyboardButton("🌐 Open Web Interface", url=f"https://YOUR_DOMAIN.com/index.html")],
-        [InlineKeyboardButton("📊 Statistics", callback_data='show_stats')],
+        [InlineKeyboardButton("📺 Watch Live Stream", callback_data='watch_stream_btn')],
+        [InlineKeyboardButton("📥 Download Video", callback_data='download_mode')],
+        [InlineKeyboardButton("📊 My Statistics", callback_data='show_stats')],
         [InlineKeyboardButton("ℹ️ Help", callback_data='show_help')]
     ]
+    
     await update.message.reply_text(
-        "👋 Welcome to Stream Downloader Bot!\n\n"
-        "Send me any video URL and I'll download it for you.\n\n"
-        "✅ Supports ALL video websites!\n"
-        "🎬 Videos play directly in Telegram!\n"
-        "✂️ Auto-generates 5-second preview clips!\n\n"
-        "🌐 Use the Web Interface for easier access!\n\n"
-        "Just paste a video link to start!",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        f"👋 Welcome to the **All-in-One Video Bot**!\n\n"
+        f"{admin_message}"
+        f"🎬 **Two Modes Available:**\n"
+        f"1️⃣ **Live Stream Mode** - Watch admin-controlled stream\n"
+        f"2️⃣ **Download Mode** - Download from 1000+ platforms\n\n"
+        f"Choose your mode below!",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
     )
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-    except Exception as e:
-        logger.warning(f"Failed to answer callback: {e}")
-    
-    if query.data == 'show_stats':
-        user_id = query.from_user.id
-        count = get_download_count(user_id)
-        text = f"📊 **Your Statistics**\n\nVideos downloaded: {count}"
-        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    elif query.data == 'show_help':
-        text = (
-            "🤖 **How to Use**\n\n"
-            "1️⃣ Send any video URL\n"
-            "2️⃣ Wait for processing\n"
-            "3️⃣ Receive 5-sec preview + full video\n\n"
-            "**Supported Sites:**\n"
-            "✅ YouTube, Instagram, Facebook\n"
-            "✅ TikTok, Twitter, Reddit\n"
-            "✅ And 1000+ more platforms!\n\n"
-            "**Features:**\n"
-            "🎬 Direct playback in Telegram\n"
-            "✂️ Auto preview clips\n"
-            "📦 Auto-splits large files\n"
-            "🖼️ High-quality thumbnails"
-        )
-        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    elif query.data == 'back_to_main':
-        keyboard = [
-            [InlineKeyboardButton("🌐 Open Web Interface", url=f"https://YOUR_DOMAIN.com/index.html")],
-            [InlineKeyboardButton("📊 Statistics", callback_data='show_stats')],
-            [InlineKeyboardButton("ℹ️ Help", callback_data='show_help')]
-        ]
-        await query.edit_message_text(
-            "👋 Use the buttons below!",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+async def set_stream(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Access denied. Only the administrator can change the stream URL.")
+        return
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await handle_url(update, context)
+    if not context.args:
+        await update.message.reply_text("Please provide a valid streaming URL. Usage: `/setstream <url>`")
+        return
+        
+    global current_stream_url
+    new_url = context.args[0].strip()
+    
+    try:
+        result = urlparse(new_url)
+        if not all([result.scheme, result.netloc]):
+            await update.message.reply_text("❌ Invalid URL provided. Please include scheme (http/https).")
+            return
+    except Exception:
+        await update.message.reply_text("❌ Invalid URL format.")
+        return
+
+    current_stream_url = new_url
+    logger.info(f"Stream URL updated to: {current_stream_url}")
+    await update.message.reply_text(
+        f"✅ Live Stream URL updated successfully!\n"
+        f"New URL: `{current_stream_url}`",
+        parse_mode='Markdown'
+    )
+
+async def watch_stream(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kb = [
+        [KeyboardButton("📺 Launch Video Player", web_app=WebAppInfo(url=f"{WEBHOOK_URL}/index.html"))]
+    ]
+    
+    reply_target = update.message if update.message else update.callback_query.message
+    
+    await reply_target.reply_text(
+        "🎬 Click the button below to open the full-screen video player and watch the live stream!",
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=True)
+    )
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.message.from_user.id
+    
     try:
         result = urlparse(url)
         if not all([result.scheme, result.netloc]):
@@ -371,7 +381,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid URL format.")
         return
     
-    status_msg = await update.message.reply_text("🔍 Processing...")
+    status_msg = await update.message.reply_text("🔍 Processing your video...")
     clip_path = None
     filepath = None
     thumb_path = None
@@ -380,7 +390,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text("🔗 Extracting video info...")
         info = extract_streaming_url(url)
         if not info:
-            await status_msg.edit_text("❌ Could not extract URL. Check if video is accessible.")
+            await status_msg.edit_text("❌ Could not extract video. Check if the URL is accessible.")
             return
         
         increment_download(user_id)
@@ -388,7 +398,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"⬇️ Downloading: {info['title'][:50]}...")
         filename = re.sub(r'[<>:\"/\\|?*]', '_', f"{info['title']}.mp4")[:100]
         
-        # Download thumbnail
         if info.get('thumbnail'):
             await status_msg.edit_text(f"📸 Downloading thumbnail...")
             thumb_path = await download_thumbnail(info['thumbnail'], filename)
@@ -396,14 +405,12 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filepath = await download_file_async(info['url'], filename, 500)
         
         if not filepath:
-            await status_msg.edit_text("❌ Download failed. File too large or unavailable.")
+            await status_msg.edit_text("❌ Download failed. File may be too large or unavailable.")
             return
         
-        # Convert to MP4 if needed
         await status_msg.edit_text("🔄 Converting to MP4...")
         filepath = await convert_to_mp4(filepath)
         
-        # Generate 5-second clip
         if info.get('duration', 0) > 5:
             try:
                 await status_msg.edit_text("✂️ Generating 5-second preview...")
@@ -413,7 +420,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         file_size = os.path.getsize(filepath)
         
-        # Send the 5-second clip first if available
         if clip_path and os.path.exists(clip_path):
             try:
                 await status_msg.edit_text("📤 Sending 5-second preview...")
@@ -477,7 +483,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"❌ Error: {e}")
         logger.error(f"URL processing error: {e}")
     finally:
-        # Cleanup
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
         if thumb_path and os.path.exists(thumb_path):
@@ -485,20 +490,115 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if clip_path and os.path.exists(clip_path):
             os.remove(clip_path)
 
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+    except Exception as e:
+        logger.warning(f"Failed to answer callback: {e}")
+    
+    if query.data == 'watch_stream_btn':
+        await watch_stream(update, context)
+        
+    elif query.data == 'download_mode':
+        text = (
+            "📥 **Download Mode**\n\n"
+            "Simply send me any video URL and I'll download it for you!\n\n"
+            "✅ Supports 1000+ platforms:\n"
+            "• YouTube, Instagram, TikTok\n"
+            "• Facebook, Twitter, Reddit\n"
+            "• And many more!\n\n"
+            "**Features:**\n"
+            "🎬 Direct playback in Telegram\n"
+            "✂️ Auto 5-second preview clips\n"
+            "📦 Auto-splits large files\n"
+            "🖼️ High-quality thumbnails\n\n"
+            "Just paste a video URL to start!"
+        )
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    elif query.data == 'show_stats':
+        user_id = query.from_user.id
+        count = get_download_count(user_id)
+        text = f"📊 **Your Statistics**\n\nVideos downloaded: {count}"
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    elif query.data == 'show_help':
+        text = (
+            "🤖 **Bot Help**\n\n"
+            "**Live Stream Mode:**\n"
+            "• Click 'Watch Live Stream'\n"
+            "• Launch the video player\n"
+            "• Enjoy the admin-controlled stream\n\n"
+            "**Download Mode:**\n"
+            "• Click 'Download Video' for info\n"
+            "• Send any video URL\n"
+            "• Receive preview + full video\n\n"
+            "**Commands:**\n"
+            "`/start` - Main menu\n"
+            "`/watch` - Launch stream player\n"
+            "`/help` - Show this help\n"
+            "`/setstream <url>` - (Admin only)\n\n"
+            "**Admin:** Only user ID `1352497419` can set the stream URL."
+        )
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    elif query.data == 'back_to_main':
+        user_id = query.from_user.id
+        if user_id == ADMIN_ID:
+            admin_message = (
+                "👑 **Admin Panel**\n"
+                "Use `/setstream <url>` to change the live stream URL.\n\n"
+            )
+        else:
+            admin_message = ""
+            
+        keyboard = [
+            [InlineKeyboardButton("📺 Watch Live Stream", callback_data='watch_stream_btn')],
+            [InlineKeyboardButton("📥 Download Video", callback_data='download_mode')],
+            [InlineKeyboardButton("📊 My Statistics", callback_data='show_stats')],
+            [InlineKeyboardButton("ℹ️ Help", callback_data='show_help')]
+        ]
+        await query.edit_message_text(
+            f"👋 Welcome back!\n\n{admin_message}Choose your mode:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 **Stream Downloader Bot**\n\n"
-        "Commands:\n"
-        "/start - Start bot\n"
-        "/help - Help\n\n"
-        "Features:\n"
-        "✅ Download from ANY video website\n"
-        "🎬 Videos play directly in Telegram\n"
-        "✂️ Auto-generates 5-second preview clips\n"
-        "📦 Auto-splits large files\n"
-        "🌐 Web interface available\n\n"
-        "Just send any video URL to get started!",
+        "🤖 **All-in-One Video Bot**\n\n"
+        "**Two Modes:**\n"
+        "1️⃣ Live Stream - Watch controlled stream\n"
+        "2️⃣ Download - Get videos from any platform\n\n"
+        "**Commands:**\n"
+        "`/start` - Main menu\n"
+        "`/watch` - Launch stream player\n"
+        "`/help` - Show help\n"
+        "`/setstream <url>` - Set stream (Admin)\n\n"
+        "Send any video URL to download it!",
         parse_mode='Markdown'
+    )
+
+async def fallback_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    
+    # Check if it looks like a URL
+    try:
+        result = urlparse(text)
+        if result.scheme and result.netloc:
+            # It's a URL, process as download
+            await handle_url(update, context)
+            return
+    except:
+        pass
+    
+    # Not a URL, show help
+    await update.message.reply_text(
+        "👋 Send me a video URL to download it, or use /start to see all options!"
     )
 
 def cleanup_temp_files():
@@ -511,12 +611,31 @@ def cleanup_temp_files():
     except Exception as e:
         logger.error(f"Cleanup error: {e}")
 
+# ============= WEB SERVER HANDLERS =============
+
+async def get_stream_handler(request):
+    global current_stream_url
+    return web.json_response({'streamUrl': current_stream_url})
+
+async def serve_html(request):
+    html_path = os.path.join(os.path.dirname(__file__), 'index.html')
+    if os.path.exists(html_path):
+        with open(html_path, 'r') as f:
+            return web.Response(text=f.read(), content_type='text/html')
+    return web.Response(text="Web interface not found", status=404)
+
+# ============= APPLICATION SETUP =============
+
 def setup_application():
     app = Application.builder().token(BOT_TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("setstream", set_stream))
+    app.add_handler(CommandHandler("watch", watch_stream))
     app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_message))
+    
     return app
 
 async def run_webhook():
@@ -544,16 +663,10 @@ async def run_webhook():
     async def health_check(request):
         return web.Response(text="OK")
     
-    async def serve_html(request):
-        html_path = os.path.join(os.path.dirname(__file__), 'index.html')
-        if os.path.exists(html_path):
-            with open(html_path, 'r') as f:
-                return web.Response(text=f.read(), content_type='text/html')
-        return web.Response(text="Web interface not found", status=404)
-    
     webapp = web.Application()
     webapp.router.add_post(webhook_path, handle_webhook)
     webapp.router.add_get("/health", health_check)
+    webapp.router.add_get("/get_stream", get_stream_handler)
     webapp.router.add_get("/", serve_html)
     webapp.router.add_get("/index.html", serve_html)
     
@@ -563,7 +676,7 @@ async def run_webhook():
     await site.start()
     
     logger.info(f"✅ Webhook server running on port {PORT}")
-    logger.info(f"🌐 Web interface available at http://localhost:{PORT}")
+    logger.info(f"🌐 Web interface available at {WEBHOOK_URL}")
     
     try:
         while True:
@@ -577,7 +690,7 @@ async def run_webhook():
 
 def main():
     cleanup_temp_files()
-    logger.info("🤖 Bot starting...")
+    logger.info("🤖 Combined Bot starting...")
     
     if USE_WEBHOOK and WEBHOOK_URL:
         logger.info("🚀 Webhook mode")
