@@ -49,21 +49,56 @@ def increment_download(user_id):
 def get_download_count(user_id):
     return download_counts.get(user_id, 0)
 
-def extract_streaming_url_method1(url):
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+def get_enhanced_ydl_opts(format_preference='best'):
+    """Enhanced yt-dlp options with better compatibility"""
+    base_opts = {
         'quiet': True,
         'no_warnings': True,
-        'socket_timeout': 30,
+        'socket_timeout': 45,
         'nocheckcertificate': True,
         'merge_output_format': 'mp4',
+        'http_chunk_size': 10485760,  # 10MB chunks
+        'retries': 3,
+        'fragment_retries': 3,
+        'skip_unavailable_fragments': True,
+        'geo_bypass': True,
+        'geo_bypass_country': 'US',
+        # Add cookies and user agent to bypass restrictions
+        'cookiefile': None,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
+        },
+        # Additional options for problematic sites
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+                'player_skip': ['webpage', 'configs'],
+            }
+        },
     }
+    
+    if format_preference == 'best':
+        base_opts['format'] = 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best[height<=1080]/best'
+    elif format_preference == 'medium':
+        base_opts['format'] = 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]'
+    elif format_preference == 'worst':
+        base_opts['format'] = 'worst[ext=mp4]/worst'
+    
+    return base_opts
+
+def extract_streaming_url_method1(url):
+    """Method 1: Best quality with progressive format preference"""
+    ydl_opts = get_enhanced_ydl_opts('best')
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if 'url' in info:
                 streaming_url = info['url']
             elif 'formats' in info:
+                # Prefer progressive formats (video+audio in one file)
                 progressive = [f for f in info['formats'] 
                               if f.get('acodec') != 'none' and f.get('vcodec') != 'none' 
                               and f.get('ext') == 'mp4']
@@ -89,14 +124,9 @@ def extract_streaming_url_method1(url):
         return None
 
 def extract_streaming_url_method2(url):
-    ydl_opts = {
-        'format': 'best[ext=mp4][filesize<500M]/best[filesize<500M]',
-        'quiet': True,
-        'no_warnings': True,
-        'socket_timeout': 30,
-        'nocheckcertificate': True,
-        'merge_output_format': 'mp4',
-    }
+    """Method 2: Medium quality with size limit"""
+    ydl_opts = get_enhanced_ydl_opts('medium')
+    ydl_opts['format'] = 'best[ext=mp4][filesize<500M]/best[filesize<500M]'
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -119,14 +149,8 @@ def extract_streaming_url_method2(url):
         return None
 
 def extract_streaming_url_method3(url):
-    ydl_opts = {
-        'format': 'worst[ext=mp4]/worst',
-        'quiet': True,
-        'no_warnings': True,
-        'socket_timeout': 30,
-        'nocheckcertificate': True,
-        'merge_output_format': 'mp4',
-    }
+    """Method 3: Worst quality as fallback"""
+    ydl_opts = get_enhanced_ydl_opts('worst')
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -146,12 +170,46 @@ def extract_streaming_url_method3(url):
         logger.error(f"Method 3 failed: {e}")
     return None
 
+def extract_streaming_url_method4(url):
+    """Method 4: Direct download with yt-dlp"""
+    ydl_opts = get_enhanced_ydl_opts('best')
+    ydl_opts['format'] = 'best'
+    ydl_opts['force_generic_extractor'] = True
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info and 'url' in info:
+                return {
+                    'url': info['url'],
+                    'title': info.get('title', 'video'),
+                    'ext': info.get('ext', 'mp4'),
+                    'filesize': info.get('filesize', 0),
+                    'duration': info.get('duration', 0),
+                    'width': info.get('width', 0),
+                    'height': info.get('height', 0),
+                    'thumbnail': info.get('thumbnail'),
+                    'method': 'method4'
+                }
+    except Exception as e:
+        logger.error(f"Method 4 failed: {e}")
+    return None
+
 def extract_streaming_url(url):
-    for method in [extract_streaming_url_method1, extract_streaming_url_method2, extract_streaming_url_method3]:
+    """Try multiple extraction methods"""
+    methods = [
+        extract_streaming_url_method1,
+        extract_streaming_url_method2,
+        extract_streaming_url_method3,
+        extract_streaming_url_method4
+    ]
+    
+    for method in methods:
         result = method(url)
         if result:
-            logger.info(f"Extracted using {result['method']}")
+            logger.info(f"✅ Extracted using {result['method']}")
             return result
+    
+    logger.error("❌ All extraction methods failed")
     return None
 
 async def download_thumbnail(url, filename):
@@ -159,7 +217,10 @@ async def download_thumbnail(url, filename):
         return None
     try:
         timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             async with session.get(url) as response:
                 if response.status == 200:
                     thumb_path = os.path.join(TEMP_DIR, f"thumb_{filename}.jpg")
@@ -172,25 +233,45 @@ async def download_thumbnail(url, filename):
 
 async def download_file_async(url, filename, max_size_mb=500):
     try:
-        timeout = aiohttp.ClientTimeout(total=300)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
+        timeout = aiohttp.ClientTimeout(total=600, connect=60)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive'
+        }
+        
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            async with session.get(url, allow_redirects=True) as response:
                 if response.status != 200:
+                    logger.error(f"Download failed with status: {response.status}")
                     return None
+                    
                 file_size = int(response.headers.get('content-length', 0))
                 max_bytes = max_size_mb * 1024 * 1024
+                
                 if file_size > max_bytes:
+                    logger.warning(f"File too large: {file_size} bytes")
                     return None
+                    
                 filepath = os.path.join(TEMP_DIR, filename)
                 downloaded = 0
+                
                 with open(filepath, 'wb') as f:
                     async for chunk in response.content.iter_chunked(8192):
                         f.write(chunk)
                         downloaded += len(chunk)
                         if downloaded > max_bytes:
                             os.remove(filepath)
+                            logger.error("File exceeded size limit during download")
                             return None
+                
+                logger.info(f"✅ Downloaded {downloaded} bytes to {filepath}")
                 return filepath
+                
+    except asyncio.TimeoutError:
+        logger.error("Download timeout")
+        return None
     except Exception as e:
         logger.error(f"Download error: {e}")
         return None
@@ -199,6 +280,7 @@ async def convert_to_mp4(filepath):
     try:
         import subprocess
         if subprocess.run(['which', 'ffmpeg'], capture_output=True).returncode != 0:
+            logger.warning("ffmpeg not available, skipping conversion")
             return filepath
         
         file_ext = os.path.splitext(filepath)[1].lower()
@@ -221,19 +303,22 @@ async def convert_to_mp4(filepath):
         
         if proc.returncode == 0 and os.path.exists(output):
             os.remove(filepath)
+            logger.info(f"✅ Converted to MP4: {output}")
             return output
         return filepath
     except Exception as e:
         logger.error(f"Conversion error: {e}")
         return filepath
 
-async def generate_clip(filepath, duration=5):
+async def generate_clips(filepath, num_clips=3, clip_duration=5):
+    """Generate multiple preview clips from different parts of the video"""
     try:
         import subprocess
         if subprocess.run(['which', 'ffmpeg'], capture_output=True).returncode != 0:
             logger.warning("ffmpeg not available for clip generation")
-            return None
+            return []
         
+        # Get video duration
         probe_cmd = [
             'ffprobe', '-v', 'error', '-show_entries', 
             'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath
@@ -248,29 +333,56 @@ async def generate_clip(filepath, duration=5):
         except (ValueError, AttributeError):
             video_duration = 30
         
-        start_time = max(0, (video_duration - duration) / 2)
+        # Don't create clips if video is too short
+        if video_duration < clip_duration * num_clips:
+            logger.warning(f"Video too short ({video_duration}s) for {num_clips} clips")
+            num_clips = max(1, int(video_duration / clip_duration))
+        
+        clips = []
         name = os.path.splitext(filepath)[0]
-        clip_path = f"{name}_clip.mp4"
         
-        cmd = [
-            'ffmpeg', '-ss', str(start_time), '-i', filepath,
-            '-t', str(duration), '-c:v', 'libx264', '-c:a', 'aac',
-            '-preset', 'ultrafast', '-crf', '28',
-            '-movflags', '+faststart',
-            '-y', clip_path
-        ]
+        # Calculate start times for clips (beginning, middle, end)
+        if num_clips == 1:
+            start_times = [max(0, (video_duration - clip_duration) / 2)]
+        elif num_clips == 2:
+            start_times = [
+                clip_duration,  # Near beginning
+                max(clip_duration, video_duration - clip_duration * 2)  # Near end
+            ]
+        else:  # 3 or more clips
+            start_times = [
+                clip_duration,  # Beginning
+                max(clip_duration, (video_duration - clip_duration) / 2),  # Middle
+                max(clip_duration * 2, video_duration - clip_duration * 2)  # End
+            ]
         
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        await proc.communicate()
+        for i, start_time in enumerate(start_times[:num_clips], 1):
+            clip_path = f"{name}_clip{i}.mp4"
+            
+            cmd = [
+                'ffmpeg', '-ss', str(start_time), '-i', filepath,
+                '-t', str(clip_duration), '-c:v', 'libx264', '-c:a', 'aac',
+                '-preset', 'ultrafast', '-crf', '28',
+                '-vf', 'scale=iw*min(1280/iw\\,720/ih):ih*min(1280/iw\\,720/ih)',  # Optimize size
+                '-movflags', '+faststart',
+                '-y', clip_path
+            ]
+            
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            if proc.returncode == 0 and os.path.exists(clip_path):
+                clips.append(clip_path)
+                logger.info(f"✅ Generated clip {i}/{num_clips}")
+            else:
+                logger.error(f"❌ Failed to generate clip {i}")
         
-        if proc.returncode == 0 and os.path.exists(clip_path):
-            return clip_path
-        return None
+        return clips
     except Exception as e:
         logger.error(f"Clip generation error: {e}")
-        return None
+        return []
 
 def split_file(filepath, chunk_size=CHUNK_SIZE):
     try:
@@ -290,6 +402,7 @@ def split_file(filepath, chunk_size=CHUNK_SIZE):
                         cf.write(data)
                         remaining -= len(data)
                 chunks.append(chunk_path)
+        logger.info(f"✅ Split into {len(chunks)} chunks")
         return chunks
     except Exception as e:
         logger.error(f"Split error: {e}")
@@ -321,6 +434,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎬 **Two Modes Available:**\n"
         f"1️⃣ **Live Stream Mode** - Watch admin-controlled stream\n"
         f"2️⃣ **Download Mode** - Download from 1000+ platforms\n\n"
+        f"✨ **New Features:**\n"
+        f"• 3 preview clips from different parts\n"
+        f"• Enhanced download compatibility\n"
+        f"• Better bypass for restricted sites\n\n"
         f"Choose your mode below!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -382,15 +499,22 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     status_msg = await update.message.reply_text("🔍 Processing your video...")
-    clip_path = None
+    clip_paths = []
     filepath = None
     thumb_path = None
     
     try:
-        await status_msg.edit_text("🔗 Extracting video info...")
+        await status_msg.edit_text("🔗 Extracting video info (trying multiple methods)...")
         info = extract_streaming_url(url)
         if not info:
-            await status_msg.edit_text("❌ Could not extract video. Check if the URL is accessible.")
+            await status_msg.edit_text(
+                "❌ Could not extract video. This might be due to:\n"
+                "• Geographic restrictions\n"
+                "• Login/authentication required\n"
+                "• Unsupported platform\n"
+                "• Video removed or private\n\n"
+                "Please try a different video or platform."
+            )
             return
         
         increment_download(user_id)
@@ -405,38 +529,50 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filepath = await download_file_async(info['url'], filename, 500)
         
         if not filepath:
-            await status_msg.edit_text("❌ Download failed. File may be too large or unavailable.")
+            await status_msg.edit_text(
+                "❌ Download failed. Possible reasons:\n"
+                "• File too large (>500MB)\n"
+                "• Download timeout\n"
+                "• Network error\n"
+                "• Access forbidden\n\n"
+                "Try a shorter video or different quality."
+            )
             return
         
         await status_msg.edit_text("🔄 Converting to MP4...")
         filepath = await convert_to_mp4(filepath)
         
-        if info.get('duration', 0) > 5:
+        # Generate 3 preview clips
+        if info.get('duration', 0) > 15:  # Only if video is longer than 15 seconds
             try:
-                await status_msg.edit_text("✂️ Generating 5-second preview...")
-                clip_path = await generate_clip(filepath, duration=5)
+                await status_msg.edit_text("✂️ Generating 3 preview clips (beginning, middle, end)...")
+                clip_paths = await generate_clips(filepath, num_clips=3, clip_duration=5)
             except Exception as e:
                 logger.error(f"Clip generation failed: {e}")
         
         file_size = os.path.getsize(filepath)
         
-        if clip_path and os.path.exists(clip_path):
-            try:
-                await status_msg.edit_text("📤 Sending 5-second preview...")
-                with open(clip_path, 'rb') as f:
-                    await update.message.reply_video(
-                        video=f,
-                        caption=f"🎬 5-sec Preview: {info['title'][:50]}",
-                        duration=5,
-                        width=info.get('width', 0),
-                        height=info.get('height', 0),
-                        thumbnail=open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None,
-                        supports_streaming=True,
-                        filename=f"clip_{filename}"
-                    )
-            except Exception as e:
-                logger.error(f"Clip send error: {e}")
+        # Send preview clips
+        if clip_paths:
+            await status_msg.edit_text(f"📤 Sending {len(clip_paths)} preview clips...")
+            for i, clip_path in enumerate(clip_paths, 1):
+                try:
+                    with open(clip_path, 'rb') as f:
+                        clip_label = ["Beginning", "Middle", "End"][i-1] if i <= 3 else f"Part {i}"
+                        await update.message.reply_video(
+                            video=f,
+                            caption=f"🎬 Preview {i}/{len(clip_paths)} ({clip_label}): {info['title'][:40]}",
+                            duration=5,
+                            width=info.get('width', 0),
+                            height=info.get('height', 0),
+                            thumbnail=open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None,
+                            supports_streaming=True,
+                            filename=f"preview{i}_{filename}"
+                        )
+                except Exception as e:
+                    logger.error(f"Clip {i} send error: {e}")
         
+        # Send full video or split
         if file_size > MAX_FILE_SIZE:
             await status_msg.edit_text(f"📦 Splitting large file ({file_size/(1024*1024):.1f}MB)...")
             chunks = split_file(filepath)
@@ -450,7 +586,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     with open(chunk, 'rb') as f:
                         await update.message.reply_video(
                             video=f,
-                            caption=f"Part {i}/{len(chunks)}",
+                            caption=f"📹 Full Video - Part {i}/{len(chunks)}",
                             supports_streaming=True,
                             filename=f"part{i}_{filename}"
                         )
@@ -459,14 +595,14 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 finally:
                     if os.path.exists(chunk):
                         os.remove(chunk)
-            await status_msg.edit_text(f"✅ Sent {len(chunks)} parts!")
+            await status_msg.edit_text(f"✅ Complete! Sent {len(clip_paths)} previews + {len(chunks)} full video parts")
         else:
             await status_msg.edit_text("📤 Sending full video...")
             try:
                 with open(filepath, 'rb') as f:
                     await update.message.reply_video(
                         video=f,
-                        caption=f"🎥 {info['title'][:100]}",
+                        caption=f"🎥 Full Video: {info['title'][:100]}",
                         duration=int(info.get('duration', 0)),
                         width=info.get('width', 0),
                         height=info.get('height', 0),
@@ -474,21 +610,23 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         supports_streaming=True,
                         filename=filename
                     )
-                await status_msg.edit_text("✅ Video sent successfully!")
+                await status_msg.edit_text(f"✅ Complete! Sent {len(clip_paths)} previews + full video")
             except Exception as e:
                 await status_msg.edit_text(f"❌ Send failed: {e}")
                 logger.error(f"Send video error: {e}")
         
     except Exception as e:
-        await status_msg.edit_text(f"❌ Error: {e}")
+        await status_msg.edit_text(f"❌ Error: {str(e)[:100]}")
         logger.error(f"URL processing error: {e}")
     finally:
+        # Cleanup
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
         if thumb_path and os.path.exists(thumb_path):
             os.remove(thumb_path)
-        if clip_path and os.path.exists(clip_path):
-            os.remove(clip_path)
+        for clip_path in clip_paths:
+            if os.path.exists(clip_path):
+                os.remove(clip_path)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -508,11 +646,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• YouTube, Instagram, TikTok\n"
             "• Facebook, Twitter, Reddit\n"
             "• And many more!\n\n"
-            "**Features:**\n"
+            "**Enhanced Features:**\n"
             "🎬 Direct playback in Telegram\n"
-            "✂️ Auto 5-second preview clips\n"
+            "✂️ **3 preview clips** (beginning, middle, end)\n"
             "📦 Auto-splits large files\n"
-            "🖼️ High-quality thumbnails\n\n"
+            "🖼️ High-quality thumbnails\n"
+            "🔓 Bypass for many restricted sites\n"
+            "🌍 Geographic bypass enabled\n\n"
             "Just paste a video URL to start!"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
@@ -535,12 +675,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "**Download Mode:**\n"
             "• Click 'Download Video' for info\n"
             "• Send any video URL\n"
-            "• Receive preview + full video\n\n"
+            "• Receive 3 previews + full video\n\n"
             "**Commands:**\n"
             "`/start` - Main menu\n"
             "`/watch` - Launch stream player\n"
             "`/help` - Show this help\n"
             "`/setstream <url>` - (Admin only)\n\n"
+            "**New Features:**\n"
+            "✨ 3 preview clips from different video parts\n"
+            "🔓 Enhanced compatibility with restricted sites\n"
+            "🌍 Geographic restrictions bypass\n"
+            "🔄 Multiple extraction methods for reliability\n\n"
             "**Admin:** Only user ID `1352497419` can set the stream URL."
         )
         keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
@@ -579,6 +724,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/watch` - Launch stream player\n"
         "`/help` - Show help\n"
         "`/setstream <url>` - Set stream (Admin)\n\n"
+        "**Enhanced Features:**\n"
+        "✨ 3 preview clips (beginning, middle, end)\n"
+        "🔓 Bypass for restricted sites\n"
+        "🌍 Geographic restrictions bypass\n"
+        "📦 Automatic file splitting for large videos\n\n"
         "Send any video URL to download it!",
         parse_mode='Markdown'
     )
@@ -690,7 +840,8 @@ async def run_webhook():
 
 def main():
     cleanup_temp_files()
-    logger.info("🤖 Combined Bot starting...")
+    logger.info("🤖 Enhanced Combined Bot starting...")
+    logger.info("✨ Features: 3 preview clips, enhanced compatibility, geo-bypass")
     
     if USE_WEBHOOK and WEBHOOK_URL:
         logger.info("🚀 Webhook mode")
