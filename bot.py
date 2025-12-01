@@ -121,35 +121,49 @@ async def generate_clips_from_file(filepath, num_clips=3, clip_duration=5):
     try:
         import subprocess
         
-        # Check if ffmpeg is available
+        # Check if ffmpeg and ffprobe are available
         if subprocess.run(['which', 'ffmpeg'], capture_output=True).returncode != 0:
-            logger.warning("ffmpeg not available")
+            logger.error("ffmpeg not available")
             return []
         
-        # Get video duration
+        if subprocess.run(['which', 'ffprobe'], capture_output=True).returncode != 0:
+            logger.error("ffprobe not available")
+            return []
+        
+        # Get video duration using ffprobe
         probe_cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 
-            'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath
+            'ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            filepath
         ]
+        
         proc = await asyncio.create_subprocess_exec(
-            *probe_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            *probe_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await proc.communicate()
+        stdout, stderr = await proc.communicate()
+        
+        if proc.returncode != 0:
+            logger.error(f"ffprobe failed: {stderr.decode()}")
+            return []
         
         try:
             video_duration = float(stdout.decode().strip())
-        except (ValueError, AttributeError):
-            logger.error("Could not get video duration")
+            logger.info(f"Video duration: {video_duration} seconds")
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Could not parse video duration: {e}")
             return []
         
         # Check if video is long enough
         min_duration = clip_duration * 3 + 10  # At least 25 seconds
         if video_duration < min_duration:
-            logger.warning(f"Video too short ({video_duration}s) for 3 clips")
+            logger.warning(f"Video too short ({video_duration}s) - need at least {min_duration}s for 3 clips")
             return []
         
         clips = []
-        name = os.path.splitext(filepath)[0]
+        base_name = os.path.splitext(filepath)[0]
         
         # Calculate start times for clips
         # Beginning: 5 seconds in
@@ -164,32 +178,52 @@ async def generate_clips_from_file(filepath, num_clips=3, clip_duration=5):
         clip_labels = ['Beginning', 'Middle', 'End']
         
         for i, (start_time, label) in enumerate(zip(start_times, clip_labels), 1):
-            clip_path = f"{name}_clip{i}_{label.lower()}.mp4"
+            clip_path = f"{base_name}_clip{i}_{label.lower()}.mp4"
             
+            # FFmpeg command to extract clip
             cmd = [
-                'ffmpeg', '-ss', str(start_time), '-i', filepath,
-                '-t', str(clip_duration),
-                '-c:v', 'libx264', '-c:a', 'aac',
-                '-preset', 'ultrafast', '-crf', '28',
-                '-vf', 'scale=iw*min(1280/iw\\,720/ih):ih*min(1280/iw\\,720/ih)',
-                '-movflags', '+faststart',
-                '-y', clip_path
+                'ffmpeg',
+                '-ss', str(start_time),  # Start time
+                '-i', filepath,  # Input file
+                '-t', str(clip_duration),  # Duration
+                '-c:v', 'libx264',  # Video codec
+                '-preset', 'medium',  # Encoding preset (changed from ultrafast for better quality)
+                '-crf', '23',  # Quality (lower = better, 23 is good balance)
+                '-c:a', 'aac',  # Audio codec
+                '-b:a', '128k',  # Audio bitrate
+                '-movflags', '+faststart',  # Enable streaming
+                '-y',  # Overwrite output
+                clip_path
             ]
             
+            logger.info(f"Generating clip {i}: {label} (start: {start_time}s)")
+            
             proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            await proc.communicate()
+            stdout, stderr = await proc.communicate()
             
             if proc.returncode == 0 and os.path.exists(clip_path):
-                clips.append((clip_path, label))
-                logger.info(f"✅ Generated {label} clip ({i}/3)")
+                # Verify the clip file is valid and has content
+                if os.path.getsize(clip_path) > 1024:  # At least 1KB
+                    clips.append((clip_path, label))
+                    logger.info(f"✅ Generated {label} clip ({i}/3) - Size: {os.path.getsize(clip_path)} bytes")
+                else:
+                    logger.error(f"❌ Clip {i} is too small (possibly corrupt)")
+                    if os.path.exists(clip_path):
+                        os.remove(clip_path)
             else:
-                logger.error(f"❌ Failed to generate {label} clip")
+                logger.error(f"❌ Failed to generate {label} clip - ffmpeg error: {stderr.decode()[:200]}")
+        
+        if not clips:
+            logger.error("No clips were generated successfully")
         
         return clips
+        
     except Exception as e:
-        logger.error(f"Clip generation error: {e}")
+        logger.error(f"Clip generation error: {e}", exc_info=True)
         return []
 
 async def download_telegram_video(file, filename):
@@ -311,14 +345,52 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await status_msg.edit_text("📤 Sending video file...")
         
-        with open(filepath, 'rb') as f:
-            await update.message.reply_document(
-                document=f,
-                caption=f"🎥 {info['title'][:100]}\n📁 Format: {info['ext'].upper()}",
-                filename=filename
-            )
-        
-        await status_msg.edit_text("✅ Video sent successfully!")
+        # Try to send as video first (playable format)
+        try:
+            # Get video metadata for better playback
+            import subprocess
+            probe_cmd = [
+                'ffprobe', '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height,duration',
+                '-of', 'csv=p=0',
+                filepath
+            ]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            width, height, duration = 0, 0, 0
+            
+            if result.returncode == 0:
+                parts = result.stdout.strip().split(',')
+                if len(parts) >= 2:
+                    width = int(parts[0]) if parts[0] else 0
+                    height = int(parts[1]) if parts[1] else 0
+                    duration = float(parts[2]) if len(parts) > 2 and parts[2] else 0
+            
+            with open(filepath, 'rb') as f:
+                await update.message.reply_video(
+                    video=f,
+                    caption=f"🎥 {info['title'][:100]}\n📁 Format: {info['ext'].upper()}",
+                    duration=int(duration) if duration > 0 else None,
+                    width=width if width > 0 else None,
+                    height=height if height > 0 else None,
+                    supports_streaming=True,
+                    filename=filename
+                )
+            await status_msg.edit_text("✅ Video sent successfully!")
+            
+        except Exception as e:
+            # Fallback to document if video send fails
+            logger.warning(f"Failed to send as video, trying document: {e}")
+            try:
+                with open(filepath, 'rb') as f:
+                    await update.message.reply_document(
+                        document=f,
+                        caption=f"🎥 {info['title'][:100]}\n📁 Format: {info['ext'].upper()}",
+                        filename=filename
+                    )
+                await status_msg.edit_text("✅ Video sent as document!")
+            except Exception as e2:
+                await status_msg.edit_text(f"❌ Failed to send: {str(e2)[:100]}")
         
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {str(e)[:100]}")
@@ -335,11 +407,18 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not video:
         return
     
-    # Check if it's a video file
+    # Check if it's a video file - support all common formats
     file_name = getattr(video, 'file_name', '')
     mime_type = getattr(video, 'mime_type', '')
     
-    if not (mime_type and mime_type.startswith('video/')) and not any(file_name.lower().endswith(ext) for ext in ['.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv']):
+    video_extensions = [
+        '.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv', '.webm', '.m4v', 
+        '.mpg', '.mpeg', '.3gp', '.ts', '.m2ts', '.vob', '.ogv', '.mts',
+        '.divx', '.xvid', '.f4v', '.rm', '.rmvb', '.asf', '.m2v'
+    ]
+    is_video = (mime_type and mime_type.startswith('video/')) or any(file_name.lower().endswith(ext) for ext in video_extensions)
+    
+    if not is_video:
         await update.message.reply_text("❌ Please send a valid video file.")
         return
     
@@ -364,28 +443,61 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         increment_clip(user_id)
         
-        await status_msg.edit_text("✂️ Generating 3 preview clips (5 seconds each)...")
+        await status_msg.edit_text("✂️ Generating 3 preview clips (5 seconds each)...\nThis may take a moment...")
         clips = await generate_clips_from_file(filepath, num_clips=3, clip_duration=5)
         
         if not clips:
-            await status_msg.edit_text("❌ Failed to generate clips. Video might be too short (<25s) or invalid format.")
+            await status_msg.edit_text("❌ Failed to generate clips. Video might be too short (<25s) or corrupted.")
             return
         
         await status_msg.edit_text(f"📤 Sending {len(clips)} clips...")
         
-        # Send each clip
+        # Send each clip with metadata
         for i, (clip_path, label) in enumerate(clips, 1):
             try:
+                # Get clip metadata
+                probe_cmd = [
+                    'ffprobe', '-v', 'error',
+                    '-select_streams', 'v:0',
+                    '-show_entries', 'stream=width,height,duration',
+                    '-of', 'csv=p=0',
+                    clip_path
+                ]
+                import subprocess
+                result = subprocess.run(probe_cmd, capture_output=True, text=True)
+                width, height, duration = 0, 0, 5
+                
+                if result.returncode == 0:
+                    parts = result.stdout.strip().split(',')
+                    if len(parts) >= 2:
+                        width = int(parts[0]) if parts[0] else 0
+                        height = int(parts[1]) if parts[1] else 0
+                        duration = float(parts[2]) if len(parts) > 2 and parts[2] else 5
+                
                 with open(clip_path, 'rb') as f:
                     await update.message.reply_video(
                         video=f,
                         caption=f"🎬 Clip {i}/3 - **{label}** (5 seconds)\n📄 From: {file_name[:50]}",
                         supports_streaming=True,
+                        duration=int(duration),
+                        width=width,
+                        height=height,
                         filename=f"clip_{i}_{label.lower()}.mp4",
                         parse_mode='Markdown'
                     )
+                    logger.info(f"✅ Sent clip {i} ({label})")
             except Exception as e:
                 logger.error(f"Failed to send clip {i}: {e}")
+                # Try sending as document if video fails
+                try:
+                    with open(clip_path, 'rb') as f:
+                        await update.message.reply_document(
+                            document=f,
+                            caption=f"🎬 Clip {i}/3 - {label}",
+                            filename=f"clip_{i}_{label.lower()}.mp4"
+                        )
+                except Exception as e2:
+                    logger.error(f"Failed to send clip {i} as document: {e2}")
         
         await status_msg.edit_text(f"✅ Successfully generated and sent {len(clips)} clips!")
         
