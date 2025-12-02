@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 # Configuration
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8370816170:AAEDqSZLLPXpCBSCfK0Y1hrJfK0JNl1ag0Y')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8370816170:AAGU6e-E6a_7rfu4WNIv0xWE-5eVn_8h7dc')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'false').lower() == 'true'
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://strict-mariam-seeutech-94fe58af.koyeb.app')
