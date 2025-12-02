@@ -15,7 +15,7 @@ import aiohttp
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8370816170:AAEDqSZLLPXpCBSCfK0Y1hrJfK0JNl1ag0Y')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
 USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'false').lower() == 'true'
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://strict-mariam-seeutech-94fe58af.koyeb.app')
 PORT = int(os.getenv('PORT', 8000))
 
 # Telegram file size limits
