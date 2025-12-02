@@ -10,12 +10,12 @@ from telegram.ext import (
 import yt_dlp
 from urllib.parse import urlparse
 import aiohttp
+from aiohttp import web
 
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8370816170:AAGU6e-E6a_7rfu4WNIv0xWE-5eVn_8h7dc')
 TEMP_DIR = os.getenv('TEMP_DIR', 'temp_downloads')
-USE_WEBHOOK = os.getenv('USE_WEBHOOK', 'false').lower() == 'true'
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://strict-mariam-seeutech-94fe58af.koyeb.app')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://static-crane-seeutech-17dd4df3.koyeb.app')
 PORT = int(os.getenv('PORT', 8000))
 
 # Telegram file size limits
@@ -633,51 +633,66 @@ def setup_application():
     
     return app
 
+async def run_webhook():
+    """Run bot in webhook mode with health check endpoint"""
+    app = setup_application()
+    webhook_path = f"/{BOT_TOKEN}"
+    full_webhook_url = f"{WEBHOOK_URL}{webhook_path}"
+    
+    logger.info(f"🚀 Starting webhook on port {PORT}")
+    logger.info(f"📡 Webhook URL: {full_webhook_url}")
+    
+    await app.initialize()
+    await app.bot.set_webhook(url=full_webhook_url, allowed_updates=Update.ALL_TYPES)
+    await app.start()
+    
+    async def handle_webhook(request):
+        try:
+            data = await request.json()
+            update = Update.de_json(data, app.bot)
+            await app.process_update(update)
+            return web.Response(text="ok")
+        except Exception as e:
+            logger.error(f"Webhook error: {e}")
+            return web.Response(text="error", status=500)
+    
+    async def health_check(request):
+        """Health check endpoint for Koyeb"""
+        return web.Response(text="OK", status=200)
+    
+    # Create web application
+    webapp = web.Application()
+    webapp.router.add_post(webhook_path, handle_webhook)
+    webapp.router.add_get("/health", health_check)
+    webapp.router.add_get("/", health_check)  # Also respond to root
+    
+    runner = web.AppRunner(webapp)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    
+    logger.info(f"✅ Webhook server running on port {PORT}")
+    logger.info(f"🏥 Health check available at {WEBHOOK_URL}/health")
+    
+    # Keep running
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await app.stop()
+        await app.shutdown()
+        await runner.cleanup()
+
 def main():
     cleanup_temp_files()
     logger.info("🤖 Video Bot starting...")
     logger.info("✨ Features: Smart Download + Clip Generator")
     
-    app = setup_application()
-    
-    if USE_WEBHOOK and WEBHOOK_URL:
-        logger.info("🚀 Webhook mode")
-        from aiohttp import web
-        
-        async def run_webhook():
-            await app.initialize()
-            await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-            await app.start()
-            
-            async def handle(request):
-                try:
-                    data = await request.json()
-                    update = Update.de_json(data, app.bot)
-                    await app.process_update(update)
-                    return web.Response(text="ok")
-                except:
-                    return web.Response(text="error", status=500)
-            
-            webapp = web.Application()
-            webapp.router.add_post(f"/{BOT_TOKEN}", handle)
-            webapp.router.add_get("/health", lambda r: web.Response(text="OK"))
-            
-            runner = web.AppRunner(webapp)
-            await runner.setup()
-            site = web.TCPSite(runner, '0.0.0.0', PORT)
-            await site.start()
-            logger.info(f"✅ Webhook on port {PORT}")
-            
-            try:
-                await asyncio.Event().wait()
-            finally:
-                await app.stop()
-                await runner.cleanup()
-        
-        asyncio.run(run_webhook())
-    else:
-        logger.info("✅ Polling mode")
-        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    # Always use webhook mode on Koyeb
+    logger.info("🚀 Running in webhook mode for Koyeb")
+    asyncio.run(run_webhook())
 
 if __name__ == '__main__':
     main()
