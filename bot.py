@@ -34,7 +34,21 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 # Statistics storage
 user_stats = {}
 
+# User processing tracking
+user_processing = {}  # Track which users are currently processing
+
 # ============= HELPER FUNCTIONS =============
+
+def is_user_processing(user_id):
+    """Check if user is currently processing a video"""
+    return user_processing.get(user_id, False)
+
+def set_user_processing(user_id, status):
+    """Set user processing status"""
+    user_processing[user_id] = status
+    if not status:
+        # Remove from tracking after a while
+        del user_processing[user_id]
 
 def update_stats(user_id, stat_type):
     """Update user statistics"""
@@ -462,8 +476,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle video URL download with smart size management"""
-    url = update.message.text.strip()
     user_id = update.message.from_user.id
+    
+    # Check if user is already processing
+    if is_user_processing(user_id):
+        await update.message.reply_text("⏳ Please wait, you're already processing a video...")
+        return
+    
+    url = update.message.text.strip()
     
     logger.info(f"URL received from user {user_id}: {url[:100]}")
     
@@ -475,6 +495,9 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text("❌ Invalid URL format")
         return
+    
+    # Set user as processing
+    set_user_processing(user_id, True)
     
     status_msg = await update.message.reply_text("🔍 Extracting video info...")
     filepath = None
@@ -520,6 +543,9 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"URL handling error: {e}", exc_info=True)
         await status_msg.edit_text(f"❌ Error: {str(e)[:100]}")
     finally:
+        # Reset user processing status
+        set_user_processing(user_id, False)
+        
         if filepath and os.path.exists(filepath):
             try:
                 os.remove(filepath)
@@ -530,11 +556,20 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle video file upload and generate clips"""
     user_id = update.message.from_user.id
+    
+    # Check if user is already processing
+    if is_user_processing(user_id):
+        await update.message.reply_text("⏳ Please wait, you're already processing a video...")
+        return
+    
     video = update.message.video or update.message.document
     
     if not video:
         await update.message.reply_text("❌ No video found in the message")
         return
+    
+    # Set user as processing
+    set_user_processing(user_id, True)
     
     # Validate video file
     file_name = getattr(video, 'file_name', 'video')
@@ -546,10 +581,12 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_video:
         await update.message.reply_text("❌ Please send a valid video file (MP4, MKV, AVI, etc.)")
+        set_user_processing(user_id, False)
         return
     
     if video.file_size > 500 * 1024 * 1024:
         await update.message.reply_text("❌ File too large (max 500MB)")
+        set_user_processing(user_id, False)
         return
     
     status_msg = await update.message.reply_text("📥 Downloading video from Telegram...")
@@ -633,6 +670,9 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"❌ Error: {str(e)[:100]}")
         
     finally:
+        # Reset user processing status
+        set_user_processing(user_id, False)
+        
         # Cleanup
         if filepath and os.path.exists(filepath):
             try:
@@ -735,6 +775,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def fallback_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    
+    # Check if user is already processing
+    if is_user_processing(user_id):
+        await update.message.reply_text("⏳ Please wait, you're already processing a video...")
+        return
+    
     text = update.message.text.strip()
     
     try:
