@@ -48,7 +48,8 @@ def set_user_processing(user_id, status):
     user_processing[user_id] = status
     if not status:
         # Remove from tracking after a while
-        del user_processing[user_id]
+        if user_id in user_processing:
+            del user_processing[user_id]
 
 def update_stats(user_id, stat_type):
     """Update user statistics"""
@@ -256,49 +257,315 @@ async def download_file_async(url, filename, max_size_mb=2000):
         return None
 
 async def generate_clips(filepath, num_clips=3, clip_duration=5):
-    """Generate preview clips from video"""
+    """Generate preview clips from video with better handling for large files"""
     try:
         if not os.path.exists(filepath):
             logger.error(f"File doesn't exist: {filepath}")
             return []
         
         file_size = os.path.getsize(filepath)
-        logger.info(f"Generating clips from: {filepath} ({file_size/1024/1024:.1f}MB)")
+        file_size_mb = file_size / (1024 * 1024)
+        logger.info(f"Generating clips from: {filepath} ({file_size_mb:.1f}MB)")
         
+        # Get video duration more robustly
         duration = await get_video_duration(filepath)
+        if duration == 0:
+            logger.error("Cannot generate clips: video duration is 0")
+            return []
+        
         logger.info(f"Video duration: {duration}s")
         
-        min_duration = clip_duration * num_clips + 15
+        # Minimum duration check
+        min_duration = clip_duration * num_clips + 10
         if duration < min_duration:
             logger.warning(f"Video too short: {duration}s (need {min_duration}s)")
+            return []
+        
+        # Handle very large videos differently
+        is_large_file = file_size_mb > 50
+        
+        clips = []
+        base_name = os.path.splitext(filepath)[0]
+        
+        # Calculate clip positions - spread them out
+        positions = []
+        
+        # For longer videos, avoid the very beginning which might have fade-ins
+        if duration > 30:
+            positions = [
+                (max(3, duration * 0.05), 'Beginning'),  # 5% into video
+                (duration * 0.45, 'Middle'),  # 45% into video
+                (max(duration * 0.9, duration - clip_duration - 5), 'End')  # Last part
+            ]
+        else:
+            positions = [
+                (5, 'Beginning'),
+                (max(10, duration * 0.5), 'Middle'),
+                (max(15, duration - clip_duration - 3), 'End')
+            ]
+        
+        # Limit to requested number of clips
+        positions = positions[:num_clips]
+        
+        logger.info(f"Generating {len(positions)} clips at positions: {positions}")
+        
+        for i, (start_time, label) in enumerate(positions, 1):
+            clip_path = f"{base_name}_clip{i}_{label.lower()}.mp4"
+            
+            # Skip if this clip would exceed video duration
+            if start_time + clip_duration > duration:
+                logger.warning(f"Skipping {label} clip: would exceed video duration")
+                continue
+            
+            logger.info(f"Creating clip {i} at {start_time:.1f}s ({label})")
+            
+            # Use different approaches for large vs small files
+            if is_large_file:
+                # For large files: Use fast seeking with keyframes
+                cmd = [
+                    'ffmpeg',
+                    '-ss', str(start_time),
+                    '-i', filepath,
+                    '-t', str(clip_duration),
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',  # Faster processing
+                    '-crf', '30',  # Slightly higher CRF for faster encoding
+                    '-c:a', 'aac',
+                    '-b:a', '64k',  # Lower audio bitrate
+                    '-movflags', '+faststart',
+                    '-vf', 'scale=640:360:force_original_aspect_ratio=decrease',  # Downscale for speed
+                    '-y',
+                    clip_path
+                ]
+            else:
+                # For smaller files: Better quality
+                cmd = [
+                    'ffmpeg',
+                    '-ss', str(start_time),
+                    '-i', filepath,
+                    '-t', str(clip_duration),
+                    '-c:v', 'libx264',
+                    '-preset', 'veryfast',
+                    '-crf', '25',
+                    '-c:a', 'aac',
+                    '-b:a', '96k',
+                    '-movflags', '+faststart',
+                    '-y',
+                    clip_path
+                ]
+            
+            # Run ffmpeg with timeout for large files
+            timeout_seconds = 60 if is_large_file else 30
+            
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                # Wait with timeout
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(), 
+                        timeout=timeout_seconds
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"FFmpeg timeout for clip {i}, terminating...")
+                    proc.terminate()
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=5)
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.wait()
+                    
+                    if os.path.exists(clip_path):
+                        os.remove(clip_path)
+                    continue
+                
+                # Check if clip was created successfully
+                if proc.returncode == 0 and os.path.exists(clip_path):
+                    clip_size = os.path.getsize(clip_path)
+                    
+                    # Validate clip has reasonable size
+                    if clip_size > 50 * 1024:  # At least 50KB
+                        clips.append((clip_path, label, i, len(positions)))
+                        logger.info(f"✅ Generated {label} clip ({clip_size/1024/1024:.1f}MB)")
+                        
+                        # Verify clip can be opened
+                        verify_cmd = [
+                            'ffprobe',
+                            '-v', 'error',
+                            '-select_streams', 'v:0',
+                            '-count_packets',
+                            '-show_entries', 'stream=nb_read_packets',
+                            '-of', 'csv=p=0',
+                            clip_path
+                        ]
+                        
+                        verify_proc = await asyncio.create_subprocess_exec(
+                            *verify_cmd,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        await verify_proc.communicate()
+                        
+                        if verify_proc.returncode != 0:
+                            logger.warning(f"Clip {i} may be corrupted, removing...")
+                            clips.pop()  # Remove from list
+                            if os.path.exists(clip_path):
+                                os.remove(clip_path)
+                    else:
+                        logger.warning(f"Clip {i} is too small: {clip_size} bytes")
+                        if os.path.exists(clip_path):
+                            os.remove(clip_path)
+                else:
+                    stderr_text = stderr.decode() if stderr else "No stderr"
+                    logger.error(f"Failed to create clip {i}: {stderr_text[:200]}")
+                    if os.path.exists(clip_path):
+                        os.remove(clip_path)
+                        
+            except Exception as e:
+                logger.error(f"Error processing clip {i}: {e}")
+                if os.path.exists(clip_path):
+                    os.remove(clip_path)
+        
+        logger.info(f"Successfully generated {len(clips)} clips")
+        return clips
+        
+    except Exception as e:
+        logger.error(f"Clip generation error: {e}", exc_info=True)
+        return []
+
+async def generate_clips_alternative(filepath, num_clips=3, clip_duration=5):
+    """Alternative method for generating clips that's more robust for large files"""
+    try:
+        if not os.path.exists(filepath):
+            logger.error(f"File doesn't exist: {filepath}")
+            return []
+        
+        # First, create a low-resolution proxy for easier processing
+        proxy_path = f"{os.path.splitext(filepath)[0]}_proxy.mp4"
+        
+        # Create a low-res proxy (much faster to process)
+        create_proxy_cmd = [
+            'ffmpeg',
+            '-i', filepath,
+            '-vf', 'scale=640:360:force_original_aspect_ratio=decrease',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '28',
+            '-c:a', 'aac',
+            '-b:a', '64k',
+            '-movflags', '+faststart',
+            '-y',
+            proxy_path
+        ]
+        
+        logger.info("Creating low-res proxy for faster clip generation...")
+        proxy_proc = await asyncio.create_subprocess_exec(
+            *create_proxy_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proxy_proc.communicate()
+        
+        if proxy_proc.returncode != 0 or not os.path.exists(proxy_path):
+            logger.error("Failed to create proxy")
+            return await generate_clips_fallback(filepath, num_clips, clip_duration)
+        
+        # Generate clips from the proxy
+        clips = await generate_clips_simple(proxy_path, num_clips, clip_duration)
+        
+        # Clean up proxy
+        try:
+            os.remove(proxy_path)
+        except:
+            pass
+        
+        return clips
+        
+    except Exception as e:
+        logger.error(f"Alternative clip generation error: {e}")
+        return await generate_clips_fallback(filepath, num_clips, clip_duration)
+
+async def generate_clips_simple(filepath, num_clips=3, clip_duration=5):
+    """Simplified clip generation for proxy files"""
+    try:
+        duration = await get_video_duration(filepath)
+        if duration == 0:
             return []
         
         clips = []
         base_name = os.path.splitext(filepath)[0]
         
-        # Calculate clip positions
+        # Simple positions
         positions = [
-            (5, 'Beginning'),
-            (max(10, (duration - clip_duration) / 2), 'Middle'),
-            (max(15, duration - clip_duration - 10), 'End')
+            (max(3, duration * 0.1), 'Beginning'),
+            (duration * 0.5, 'Middle'),
+            (max(duration * 0.85, duration - clip_duration - 3), 'End')
         ]
         
         for i, (start_time, label) in enumerate(positions[:num_clips], 1):
             clip_path = f"{base_name}_clip{i}_{label.lower()}.mp4"
-            
-            logger.info(f"Creating clip {i} at {start_time}s ({label})")
             
             cmd = [
                 'ffmpeg',
                 '-ss', str(start_time),
                 '-i', filepath,
                 '-t', str(clip_duration),
+                '-c', 'copy',  # Use copy for speed
+                '-avoid_negative_ts', 'make_zero',
+                '-y',
+                clip_path
+            ]
+            
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            if proc.returncode == 0 and os.path.exists(clip_path):
+                clips.append((clip_path, label, i, len(positions[:num_clips])))
+        
+        return clips
+    except Exception as e:
+        logger.error(f"Simple clip generation error: {e}")
+        return []
+
+async def generate_clips_fallback(filepath, num_clips=3, clip_duration=5):
+    """Fallback method using frame extraction"""
+    try:
+        duration = await get_video_duration(filepath)
+        if duration == 0:
+            return []
+        
+        clips = []
+        base_name = os.path.splitext(filepath)[0]
+        
+        # Extract keyframes at specific times
+        for i, (time_pos, label) in enumerate([
+            (duration * 0.1, 'Beginning'),
+            (duration * 0.5, 'Middle'),
+            (duration * 0.9, 'End')
+        ][:num_clips], 1):
+            
+            clip_path = f"{base_name}_clip{i}_{label.lower()}.mp4"
+            
+            # Extract short segment using -ss before -i for faster seeking
+            cmd = [
+                'ffmpeg',
+                '-ss', str(time_pos - 2.5),  # Start 2.5 seconds before target
+                '-i', filepath,
+                '-t', str(clip_duration),
                 '-c:v', 'libx264',
-                '-preset', 'veryfast',
+                '-preset', 'ultrafast',
                 '-crf', '28',
                 '-c:a', 'aac',
-                '-b:a', '96k',
-                '-movflags', '+faststart',
+                '-b:a', '64k',
+                '-vf', 'fps=30',  # Ensure consistent framerate
                 '-y',
                 clip_path
             ]
@@ -310,24 +577,15 @@ async def generate_clips(filepath, num_clips=3, clip_duration=5):
             )
             stdout, stderr = await proc.communicate()
             
-            if proc.returncode == 0:
-                if os.path.exists(clip_path):
-                    clip_size = os.path.getsize(clip_path)
-                    if clip_size > 1024:
-                        clips.append((clip_path, label, i, num_clips))
-                        logger.info(f"✅ Generated {label} clip ({clip_size/1024/1024:.1f}MB)")
-                    else:
-                        logger.warning(f"Clip {i} is too small: {clip_size} bytes")
-                        if os.path.exists(clip_path):
-                            os.remove(clip_path)
+            if proc.returncode == 0 and os.path.exists(clip_path):
+                if os.path.getsize(clip_path) > 10240:  # At least 10KB
+                    clips.append((clip_path, label, i, num_clips))
                 else:
-                    logger.warning(f"Clip {i} file not created")
-            else:
-                logger.error(f"FFmpeg error for clip {i}: {stderr.decode()}")
+                    os.remove(clip_path)
         
         return clips
     except Exception as e:
-        logger.error(f"Clip generation error: {e}", exc_info=True)
+        logger.error(f"Fallback clip generation error: {e}")
         return []
 
 async def send_video_smart(message, filepath, caption, filename):
@@ -554,7 +812,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle video file upload and generate clips"""
+    """Handle video file upload and generate clips with improved method"""
     user_id = update.message.from_user.id
     
     # Check if user is already processing
@@ -584,14 +842,14 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_processing(user_id, False)
         return
     
-    if video.file_size > 500 * 1024 * 1024:
-        await update.message.reply_text("❌ File too large (max 500MB)")
+    # Increased limit for better compatibility
+    if video.file_size > 1000 * 1024 * 1024:  # 1GB
+        await update.message.reply_text("❌ File too large (max 1GB)")
         set_user_processing(user_id, False)
         return
     
     status_msg = await update.message.reply_text("📥 Downloading video from Telegram...")
     filepath = None
-    clips = []
     
     try:
         # Get unique filename
@@ -610,16 +868,32 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
-        await status_msg.edit_text(f"✅ Downloaded: {file_size_mb:.1f}MB\n✂️ Generating 3 preview clips...")
+        await status_msg.edit_text(f"✅ Downloaded: {file_size_mb:.1f}MB\n✂️ Generating preview clips...")
         
         update_stats(user_id, 'clips')
         
-        clips = await generate_clips(filepath, num_clips=3, clip_duration=5)
+        # Choose method based on file size
+        if file_size_mb > 50:
+            # Use alternative method for large files
+            await status_msg.edit_text(f"📦 Large file detected, using optimized processing...")
+            clips = await generate_clips_alternative(filepath, num_clips=3, clip_duration=5)
+        else:
+            # Use standard method for smaller files
+            clips = await generate_clips(filepath, num_clips=3, clip_duration=5)
+        
+        if not clips:
+            # Try fallback method
+            await status_msg.edit_text("🔄 Trying alternative method...")
+            clips = await generate_clips_fallback(filepath, num_clips=3, clip_duration=5)
         
         if not clips:
             await status_msg.edit_text(
                 "❌ Failed to generate clips.\n"
-                "Video must be at least 25 seconds long and have valid video streams."
+                "Possible reasons:\n"
+                "• Video is corrupted\n"
+                "• Video codec not supported\n"
+                "• Video is too short (<30 seconds)\n"
+                "• File format not compatible"
             )
             return
         
@@ -647,18 +921,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     sent_count += 1
                     
             except Exception as e:
-                logger.error(f"Failed to send clip {num} as video: {e}")
-                try:
-                    # Try alternative method if video fails
-                    with open(clip_path, 'rb') as f:
-                        await update.message.reply_document(
-                            document=f,
-                            caption=f"🎬 Clip {num}/{total} - {label}",
-                            filename=f"clip_{num}_{label.lower()}.mp4"
-                        )
-                    sent_count += 1
-                except Exception as e2:
-                    logger.error(f"Failed to send clip {num} as document: {e2}")
+                logger.error(f"Failed to send clip {num}: {e}")
         
         if sent_count > 0:
             await status_msg.edit_text(f"✅ Successfully sent {sent_count}/{len(clips)} clips!")
@@ -681,11 +944,11 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
         
-        for clip_path, _, _, _ in clips:
-            if clip_path and os.path.exists(clip_path):
+        # Also clean up any other temporary files
+        for f in os.listdir(TEMP_DIR):
+            if f.startswith(f"video_{user_id}_"):
                 try:
-                    os.remove(clip_path)
-                    logger.info(f"Cleaned up clip: {clip_path}")
+                    os.remove(os.path.join(TEMP_DIR, f))
                 except:
                     pass
 
@@ -719,8 +982,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2️⃣ Bot generates 3 × 5-second clips\n"
             "3️⃣ Clips from: Beginning, Middle, End\n\n"
             "**Requirements:**\n"
-            "⏱ Min duration: 25 seconds\n"
-            "📦 Max size: 500MB\n"
+            "⏱ Min duration: 30 seconds\n"
+            "📦 Max size: 1GB\n"
             "🎬 Formats: MP4, MKV, AVI, MOV, etc.\n\n"
             "Just send your video!"
         )
