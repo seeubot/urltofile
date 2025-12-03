@@ -21,6 +21,7 @@ PORT = int(os.getenv('PORT', 8000))
 # Telegram file size limits
 TELEGRAM_VIDEO_LIMIT = 50 * 1024 * 1024  # 50MB for videos
 TELEGRAM_DOCUMENT_LIMIT = 2000 * 1024 * 1024  # 2GB for documents
+TELEGRAM_BOT_DOWNLOAD_LIMIT = 20 * 1024 * 1024  # 20MB max for bot to download files
 
 # Setup logging
 logging.basicConfig(
@@ -45,11 +46,10 @@ def is_user_processing(user_id):
 
 def set_user_processing(user_id, status):
     """Set user processing status"""
-    user_processing[user_id] = status
-    if not status:
-        # Remove from tracking after a while
-        if user_id in user_processing:
-            del user_processing[user_id]
+    if status:
+        user_processing[user_id] = status
+    else:
+        user_processing.pop(user_id, None)
 
 def update_stats(user_id, stat_type):
     """Update user statistics"""
@@ -60,6 +60,31 @@ def update_stats(user_id, stat_type):
 def get_stats(user_id):
     """Get user statistics"""
     return user_stats.get(user_id, {'downloads': 0, 'clips': 0})
+
+def sanitize_filename(filename):
+    """Sanitize filename to remove problematic characters"""
+    # Remove or replace problematic characters
+    sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    # Limit length
+    if len(sanitized) > 100:
+        name, ext = os.path.splitext(sanitized)
+        sanitized = name[:95] + ext
+    return sanitized
+
+def sanitize_caption(caption):
+    """Sanitize caption to prevent Markdown parsing errors"""
+    if not caption:
+        return ""
+    
+    # Escape Markdown special characters
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        caption = caption.replace(char, f'\\{char}')
+    
+    # Remove any remaining problematic sequences
+    caption = re.sub(r'[^\w\s\\\-.,!?@#\$%^&*()+=<>[\]{}|;:"`~]', '', caption)
+    
+    return caption[:1024]  # Telegram caption limit
 
 async def get_video_duration(filepath):
     """Get video duration using ffprobe"""
@@ -257,315 +282,49 @@ async def download_file_async(url, filename, max_size_mb=2000):
         return None
 
 async def generate_clips(filepath, num_clips=3, clip_duration=5):
-    """Generate preview clips from video with better handling for large files"""
+    """Generate preview clips from video"""
     try:
         if not os.path.exists(filepath):
             logger.error(f"File doesn't exist: {filepath}")
             return []
         
         file_size = os.path.getsize(filepath)
-        file_size_mb = file_size / (1024 * 1024)
-        logger.info(f"Generating clips from: {filepath} ({file_size_mb:.1f}MB)")
+        logger.info(f"Generating clips from: {filepath} ({file_size/1024/1024:.1f}MB)")
         
-        # Get video duration more robustly
         duration = await get_video_duration(filepath)
-        if duration == 0:
-            logger.error("Cannot generate clips: video duration is 0")
-            return []
-        
         logger.info(f"Video duration: {duration}s")
         
-        # Minimum duration check
-        min_duration = clip_duration * num_clips + 10
+        min_duration = clip_duration * num_clips + 15
         if duration < min_duration:
             logger.warning(f"Video too short: {duration}s (need {min_duration}s)")
             return []
         
-        # Handle very large videos differently
-        is_large_file = file_size_mb > 50
-        
         clips = []
         base_name = os.path.splitext(filepath)[0]
         
-        # Calculate clip positions - spread them out
-        positions = []
-        
-        # For longer videos, avoid the very beginning which might have fade-ins
-        if duration > 30:
-            positions = [
-                (max(3, duration * 0.05), 'Beginning'),  # 5% into video
-                (duration * 0.45, 'Middle'),  # 45% into video
-                (max(duration * 0.9, duration - clip_duration - 5), 'End')  # Last part
-            ]
-        else:
-            positions = [
-                (5, 'Beginning'),
-                (max(10, duration * 0.5), 'Middle'),
-                (max(15, duration - clip_duration - 3), 'End')
-            ]
-        
-        # Limit to requested number of clips
-        positions = positions[:num_clips]
-        
-        logger.info(f"Generating {len(positions)} clips at positions: {positions}")
-        
-        for i, (start_time, label) in enumerate(positions, 1):
-            clip_path = f"{base_name}_clip{i}_{label.lower()}.mp4"
-            
-            # Skip if this clip would exceed video duration
-            if start_time + clip_duration > duration:
-                logger.warning(f"Skipping {label} clip: would exceed video duration")
-                continue
-            
-            logger.info(f"Creating clip {i} at {start_time:.1f}s ({label})")
-            
-            # Use different approaches for large vs small files
-            if is_large_file:
-                # For large files: Use fast seeking with keyframes
-                cmd = [
-                    'ffmpeg',
-                    '-ss', str(start_time),
-                    '-i', filepath,
-                    '-t', str(clip_duration),
-                    '-c:v', 'libx264',
-                    '-preset', 'ultrafast',  # Faster processing
-                    '-crf', '30',  # Slightly higher CRF for faster encoding
-                    '-c:a', 'aac',
-                    '-b:a', '64k',  # Lower audio bitrate
-                    '-movflags', '+faststart',
-                    '-vf', 'scale=640:360:force_original_aspect_ratio=decrease',  # Downscale for speed
-                    '-y',
-                    clip_path
-                ]
-            else:
-                # For smaller files: Better quality
-                cmd = [
-                    'ffmpeg',
-                    '-ss', str(start_time),
-                    '-i', filepath,
-                    '-t', str(clip_duration),
-                    '-c:v', 'libx264',
-                    '-preset', 'veryfast',
-                    '-crf', '25',
-                    '-c:a', 'aac',
-                    '-b:a', '96k',
-                    '-movflags', '+faststart',
-                    '-y',
-                    clip_path
-                ]
-            
-            # Run ffmpeg with timeout for large files
-            timeout_seconds = 60 if is_large_file else 30
-            
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                # Wait with timeout
-                try:
-                    stdout, stderr = await asyncio.wait_for(
-                        proc.communicate(), 
-                        timeout=timeout_seconds
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(f"FFmpeg timeout for clip {i}, terminating...")
-                    proc.terminate()
-                    try:
-                        await asyncio.wait_for(proc.wait(), timeout=5)
-                    except asyncio.TimeoutError:
-                        proc.kill()
-                        await proc.wait()
-                    
-                    if os.path.exists(clip_path):
-                        os.remove(clip_path)
-                    continue
-                
-                # Check if clip was created successfully
-                if proc.returncode == 0 and os.path.exists(clip_path):
-                    clip_size = os.path.getsize(clip_path)
-                    
-                    # Validate clip has reasonable size
-                    if clip_size > 50 * 1024:  # At least 50KB
-                        clips.append((clip_path, label, i, len(positions)))
-                        logger.info(f"✅ Generated {label} clip ({clip_size/1024/1024:.1f}MB)")
-                        
-                        # Verify clip can be opened
-                        verify_cmd = [
-                            'ffprobe',
-                            '-v', 'error',
-                            '-select_streams', 'v:0',
-                            '-count_packets',
-                            '-show_entries', 'stream=nb_read_packets',
-                            '-of', 'csv=p=0',
-                            clip_path
-                        ]
-                        
-                        verify_proc = await asyncio.create_subprocess_exec(
-                            *verify_cmd,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await verify_proc.communicate()
-                        
-                        if verify_proc.returncode != 0:
-                            logger.warning(f"Clip {i} may be corrupted, removing...")
-                            clips.pop()  # Remove from list
-                            if os.path.exists(clip_path):
-                                os.remove(clip_path)
-                    else:
-                        logger.warning(f"Clip {i} is too small: {clip_size} bytes")
-                        if os.path.exists(clip_path):
-                            os.remove(clip_path)
-                else:
-                    stderr_text = stderr.decode() if stderr else "No stderr"
-                    logger.error(f"Failed to create clip {i}: {stderr_text[:200]}")
-                    if os.path.exists(clip_path):
-                        os.remove(clip_path)
-                        
-            except Exception as e:
-                logger.error(f"Error processing clip {i}: {e}")
-                if os.path.exists(clip_path):
-                    os.remove(clip_path)
-        
-        logger.info(f"Successfully generated {len(clips)} clips")
-        return clips
-        
-    except Exception as e:
-        logger.error(f"Clip generation error: {e}", exc_info=True)
-        return []
-
-async def generate_clips_alternative(filepath, num_clips=3, clip_duration=5):
-    """Alternative method for generating clips that's more robust for large files"""
-    try:
-        if not os.path.exists(filepath):
-            logger.error(f"File doesn't exist: {filepath}")
-            return []
-        
-        # First, create a low-resolution proxy for easier processing
-        proxy_path = f"{os.path.splitext(filepath)[0]}_proxy.mp4"
-        
-        # Create a low-res proxy (much faster to process)
-        create_proxy_cmd = [
-            'ffmpeg',
-            '-i', filepath,
-            '-vf', 'scale=640:360:force_original_aspect_ratio=decrease',
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '28',
-            '-c:a', 'aac',
-            '-b:a', '64k',
-            '-movflags', '+faststart',
-            '-y',
-            proxy_path
-        ]
-        
-        logger.info("Creating low-res proxy for faster clip generation...")
-        proxy_proc = await asyncio.create_subprocess_exec(
-            *create_proxy_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await proxy_proc.communicate()
-        
-        if proxy_proc.returncode != 0 or not os.path.exists(proxy_path):
-            logger.error("Failed to create proxy")
-            return await generate_clips_fallback(filepath, num_clips, clip_duration)
-        
-        # Generate clips from the proxy
-        clips = await generate_clips_simple(proxy_path, num_clips, clip_duration)
-        
-        # Clean up proxy
-        try:
-            os.remove(proxy_path)
-        except:
-            pass
-        
-        return clips
-        
-    except Exception as e:
-        logger.error(f"Alternative clip generation error: {e}")
-        return await generate_clips_fallback(filepath, num_clips, clip_duration)
-
-async def generate_clips_simple(filepath, num_clips=3, clip_duration=5):
-    """Simplified clip generation for proxy files"""
-    try:
-        duration = await get_video_duration(filepath)
-        if duration == 0:
-            return []
-        
-        clips = []
-        base_name = os.path.splitext(filepath)[0]
-        
-        # Simple positions
+        # Calculate clip positions
         positions = [
-            (max(3, duration * 0.1), 'Beginning'),
-            (duration * 0.5, 'Middle'),
-            (max(duration * 0.85, duration - clip_duration - 3), 'End')
+            (5, 'Beginning'),
+            (max(10, (duration - clip_duration) / 2), 'Middle'),
+            (max(15, duration - clip_duration - 10), 'End')
         ]
         
         for i, (start_time, label) in enumerate(positions[:num_clips], 1):
             clip_path = f"{base_name}_clip{i}_{label.lower()}.mp4"
+            
+            logger.info(f"Creating clip {i} at {start_time}s ({label})")
             
             cmd = [
                 'ffmpeg',
                 '-ss', str(start_time),
                 '-i', filepath,
                 '-t', str(clip_duration),
-                '-c', 'copy',  # Use copy for speed
-                '-avoid_negative_ts', 'make_zero',
-                '-y',
-                clip_path
-            ]
-            
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await proc.communicate()
-            
-            if proc.returncode == 0 and os.path.exists(clip_path):
-                clips.append((clip_path, label, i, len(positions[:num_clips])))
-        
-        return clips
-    except Exception as e:
-        logger.error(f"Simple clip generation error: {e}")
-        return []
-
-async def generate_clips_fallback(filepath, num_clips=3, clip_duration=5):
-    """Fallback method using frame extraction"""
-    try:
-        duration = await get_video_duration(filepath)
-        if duration == 0:
-            return []
-        
-        clips = []
-        base_name = os.path.splitext(filepath)[0]
-        
-        # Extract keyframes at specific times
-        for i, (time_pos, label) in enumerate([
-            (duration * 0.1, 'Beginning'),
-            (duration * 0.5, 'Middle'),
-            (duration * 0.9, 'End')
-        ][:num_clips], 1):
-            
-            clip_path = f"{base_name}_clip{i}_{label.lower()}.mp4"
-            
-            # Extract short segment using -ss before -i for faster seeking
-            cmd = [
-                'ffmpeg',
-                '-ss', str(time_pos - 2.5),  # Start 2.5 seconds before target
-                '-i', filepath,
-                '-t', str(clip_duration),
                 '-c:v', 'libx264',
-                '-preset', 'ultrafast',
+                '-preset', 'veryfast',
                 '-crf', '28',
                 '-c:a', 'aac',
-                '-b:a', '64k',
-                '-vf', 'fps=30',  # Ensure consistent framerate
+                '-b:a', '96k',
+                '-movflags', '+faststart',
                 '-y',
                 clip_path
             ]
@@ -577,15 +336,24 @@ async def generate_clips_fallback(filepath, num_clips=3, clip_duration=5):
             )
             stdout, stderr = await proc.communicate()
             
-            if proc.returncode == 0 and os.path.exists(clip_path):
-                if os.path.getsize(clip_path) > 10240:  # At least 10KB
-                    clips.append((clip_path, label, i, num_clips))
+            if proc.returncode == 0:
+                if os.path.exists(clip_path):
+                    clip_size = os.path.getsize(clip_path)
+                    if clip_size > 1024:
+                        clips.append((clip_path, label, i, num_clips))
+                        logger.info(f"✅ Generated {label} clip ({clip_size/1024/1024:.1f}MB)")
+                    else:
+                        logger.warning(f"Clip {i} is too small: {clip_size} bytes")
+                        if os.path.exists(clip_path):
+                            os.remove(clip_path)
                 else:
-                    os.remove(clip_path)
+                    logger.warning(f"Clip {i} file not created")
+            else:
+                logger.error(f"FFmpeg error for clip {i}: {stderr.decode()}")
         
         return clips
     except Exception as e:
-        logger.error(f"Fallback clip generation error: {e}")
+        logger.error(f"Clip generation error: {e}", exc_info=True)
         return []
 
 async def send_video_smart(message, filepath, caption, filename):
@@ -610,10 +378,10 @@ async def send_video_smart(message, filepath, caption, filename):
             with open(filepath, 'rb') as f:
                 await message.reply_video(
                     video=f,
-                    caption=caption,
+                    caption=sanitize_caption(caption),
                     supports_streaming=True,
                     filename=filename,
-                    parse_mode='Markdown'
+                    parse_mode='MarkdownV2'
                 )
             return True
         
@@ -634,10 +402,10 @@ async def send_video_smart(message, filepath, caption, filename):
                     with open(compressed_path, 'rb') as f:
                         await message.reply_video(
                             video=f,
-                            caption=f"{caption}\n\n⚠️ Compressed to fit Telegram limits",
+                            caption=sanitize_caption(f"{caption}\\n\\n⚠️ Compressed to fit Telegram limits"),
                             supports_streaming=True,
                             filename=filename,
-                            parse_mode='Markdown'
+                            parse_mode='MarkdownV2'
                         )
                     os.remove(compressed_path)
                     return True
@@ -651,9 +419,9 @@ async def send_video_smart(message, filepath, caption, filename):
             with open(filepath, 'rb') as f:
                 await message.reply_document(
                     document=f,
-                    caption=f"{caption}\n\n📁 Sent as document due to size",
+                    caption=sanitize_caption(f"{caption}\\n\\n📁 Sent as document due to size"),
                     filename=filename,
-                    parse_mode='Markdown'
+                    parse_mode='MarkdownV2'
                 )
             return True
         
@@ -671,7 +439,7 @@ async def send_video_smart(message, filepath, caption, filename):
             for chunk_path, part_num, total_parts in chunks:
                 chunk_size = os.path.getsize(chunk_path)
                 chunk_size_mb = chunk_size / (1024 * 1024)
-                part_caption = f"{caption}\n\n📦 Part {part_num}/{total_parts}"
+                part_caption = f"{caption}\\n\\n📦 Part {part_num}/{total_parts}"
                 
                 logger.info(f"Sending part {part_num}/{total_parts} ({chunk_size_mb:.1f}MB)")
                 
@@ -680,18 +448,18 @@ async def send_video_smart(message, filepath, caption, filename):
                         with open(chunk_path, 'rb') as f:
                             await message.reply_video(
                                 video=f,
-                                caption=part_caption,
+                                caption=sanitize_caption(part_caption),
                                 supports_streaming=True,
                                 filename=f"part{part_num}_{filename}",
-                                parse_mode='Markdown'
+                                parse_mode='MarkdownV2'
                             )
                     else:
                         with open(chunk_path, 'rb') as f:
                             await message.reply_document(
                                 document=f,
-                                caption=part_caption,
+                                caption=sanitize_caption(part_caption),
                                 filename=f"part{part_num}_{filename}",
-                                parse_mode='Markdown'
+                                parse_mode='MarkdownV2'
                             )
                 except Exception as e:
                     logger.error(f"Failed to send part {part_num}: {e}")
@@ -716,20 +484,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     await update.message.reply_text(
-        "🎬 **Video Download & Clip Generator Bot**\n\n"
-        "**Two Powerful Features:**\n\n"
-        "📥 **Download Video**\n"
+        "🎬 Video Download & Clip Generator Bot\n\n"
+        "Two Powerful Features:\n\n"
+        "📥 Download Video\n"
         "• Send any video URL\n"
         "• Supports 1000+ websites\n"
         "• Auto-compression for large files\n"
         "• Smart splitting for huge files\n\n"
-        "✂️ **Generate Clips**\n"
+        "✂️ Generate Clips\n"
         "• Upload a video file\n"
         "• Get 3 × 5-second preview clips\n"
         "• From beginning, middle, and end\n\n"
         "Choose a mode below!",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -767,7 +534,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         await status_msg.edit_text(f"⬇️ Downloading: {info['title'][:50]}...")
-        filename = re.sub(r'[<>:\"/\\|?*]', '_', f"{info['title']}.{info['ext']}")[:100]
+        filename = sanitize_filename(f"{info['title']}.{info['ext']}")
         
         filepath = await download_file_async(info['url'], filename)
         
@@ -788,7 +555,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         success = await send_video_smart(
             update.message,
             filepath,
-            f"🎥 **{info['title'][:80]}**",
+            f"🎥 {info['title'][:80]}",
             filename
         )
         
@@ -812,7 +579,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle video file upload and generate clips with improved method"""
+    """Handle video file upload and generate clips"""
     user_id = update.message.from_user.id
     
     # Check if user is already processing
@@ -824,6 +591,15 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not video:
         await update.message.reply_text("❌ No video found in the message")
+        return
+    
+    # Check file size - Telegram bots can only download files up to 20MB
+    if video.file_size > TELEGRAM_BOT_DOWNLOAD_LIMIT:
+        await update.message.reply_text(
+            f"❌ File is too large for clip generation.\n"
+            f"Telegram limits bot downloads to {TELEGRAM_BOT_DOWNLOAD_LIMIT/1024/1024:.0f}MB.\n"
+            f"Please send a smaller video file (under 20MB)."
+        )
         return
     
     # Set user as processing
@@ -842,14 +618,9 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_processing(user_id, False)
         return
     
-    # Increased limit for better compatibility
-    if video.file_size > 1000 * 1024 * 1024:  # 1GB
-        await update.message.reply_text("❌ File too large (max 1GB)")
-        set_user_processing(user_id, False)
-        return
-    
     status_msg = await update.message.reply_text("📥 Downloading video from Telegram...")
     filepath = None
+    clips = []
     
     try:
         # Get unique filename
@@ -868,32 +639,16 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
-        await status_msg.edit_text(f"✅ Downloaded: {file_size_mb:.1f}MB\n✂️ Generating preview clips...")
+        await status_msg.edit_text(f"✅ Downloaded: {file_size_mb:.1f}MB\n✂️ Generating 3 preview clips...")
         
         update_stats(user_id, 'clips')
         
-        # Choose method based on file size
-        if file_size_mb > 50:
-            # Use alternative method for large files
-            await status_msg.edit_text(f"📦 Large file detected, using optimized processing...")
-            clips = await generate_clips_alternative(filepath, num_clips=3, clip_duration=5)
-        else:
-            # Use standard method for smaller files
-            clips = await generate_clips(filepath, num_clips=3, clip_duration=5)
-        
-        if not clips:
-            # Try fallback method
-            await status_msg.edit_text("🔄 Trying alternative method...")
-            clips = await generate_clips_fallback(filepath, num_clips=3, clip_duration=5)
+        clips = await generate_clips(filepath, num_clips=3, clip_duration=5)
         
         if not clips:
             await status_msg.edit_text(
                 "❌ Failed to generate clips.\n"
-                "Possible reasons:\n"
-                "• Video is corrupted\n"
-                "• Video codec not supported\n"
-                "• Video is too short (<30 seconds)\n"
-                "• File format not compatible"
+                "Video must be at least 25 seconds long and have valid video streams."
             )
             return
         
@@ -910,18 +665,47 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 clip_size_mb = os.path.getsize(clip_path) / (1024 * 1024)
                 logger.info(f"Sending clip {num}/{total} ({label}): {clip_size_mb:.1f}MB")
                 
+                # Sanitize the caption to prevent Markdown parsing errors
+                safe_file_name = sanitize_caption(file_name[:50])
+                caption = f"🎬 Clip {num}/{total} - {label}\\n📁 From: {safe_file_name}"
+                
                 with open(clip_path, 'rb') as f:
                     await update.message.reply_video(
                         video=f,
-                        caption=f"🎬 **Clip {num}/{total} - {label}**\n📁 From: {file_name[:50]}",
+                        caption=caption,
                         supports_streaming=True,
                         filename=f"clip_{num}_{label.lower()}.mp4",
-                        parse_mode='Markdown'
+                        parse_mode='MarkdownV2'
                     )
                     sent_count += 1
                     
             except Exception as e:
-                logger.error(f"Failed to send clip {num}: {e}")
+                logger.error(f"Failed to send clip {num} as video: {e}")
+                try:
+                    # Try alternative method if video fails
+                    safe_file_name = sanitize_caption(file_name[:50])
+                    caption = f"🎬 Clip {num}/{total} - {label}\\n📁 From: {safe_file_name}"
+                    
+                    with open(clip_path, 'rb') as f:
+                        await update.message.reply_document(
+                            document=f,
+                            caption=caption,
+                            filename=f"clip_{num}_{label.lower()}.mp4",
+                            parse_mode='MarkdownV2'
+                        )
+                    sent_count += 1
+                except Exception as e2:
+                    logger.error(f"Failed to send clip {num} as document: {e2}")
+                    # Try without parse_mode
+                    try:
+                        with open(clip_path, 'rb') as f:
+                            await update.message.reply_document(
+                                document=f,
+                                filename=f"clip_{num}_{label.lower()}.mp4"
+                            )
+                        sent_count += 1
+                    except Exception as e3:
+                        logger.error(f"Failed to send clip {num} without parse_mode: {e3}")
         
         if sent_count > 0:
             await status_msg.edit_text(f"✅ Successfully sent {sent_count}/{len(clips)} clips!")
@@ -944,11 +728,11 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
         
-        # Also clean up any other temporary files
-        for f in os.listdir(TEMP_DIR):
-            if f.startswith(f"video_{user_id}_"):
+        for clip_path, _, _, _ in clips:
+            if clip_path and os.path.exists(clip_path):
                 try:
-                    os.remove(os.path.join(TEMP_DIR, f))
+                    os.remove(clip_path)
+                    logger.info(f"Cleaned up clip: {clip_path}")
                 except:
                     pass
 
@@ -958,63 +742,63 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == 'mode_download':
         text = (
-            "📥 **Download Mode**\n\n"
+            "📥 Download Mode\n\n"
             "Send me any video URL and I'll download it!\n\n"
-            "✅ **Supported:**\n"
+            "✅ Supported:\n"
             "• YouTube, Instagram, TikTok\n"
             "• Facebook, Twitter, Reddit\n"
             "• And 1000+ more sites\n\n"
-            "**Smart Features:**\n"
+            "Smart Features:\n"
             "🎯 Auto-compression for files >50MB\n"
             "📦 Auto-splitting for files >2GB\n"
             "🔓 Bypass restrictions\n\n"
             "Just paste a video URL!"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_main')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     elif query.data == 'mode_clips':
         text = (
-            "✂️ **Clip Generator**\n\n"
+            "✂️ Clip Generator\n\n"
             "Upload a video file to get 3 preview clips!\n\n"
-            "**How it works:**\n"
+            "How it works:\n"
             "1️⃣ Send any video file\n"
             "2️⃣ Bot generates 3 × 5-second clips\n"
             "3️⃣ Clips from: Beginning, Middle, End\n\n"
-            "**Requirements:**\n"
-            "⏱ Min duration: 30 seconds\n"
-            "📦 Max size: 1GB\n"
+            "Requirements:\n"
+            "⏱ Min duration: 25 seconds\n"
+            "📦 Max size: 20MB (Telegram limit)\n"
             "🎬 Formats: MP4, MKV, AVI, MOV, etc.\n\n"
             "Just send your video!"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_main')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     elif query.data == 'show_stats':
         stats = get_stats(query.from_user.id)
         text = (
-            f"📊 **Your Statistics**\n\n"
+            f"📊 Your Statistics\n\n"
             f"📥 Videos downloaded: {stats['downloads']}\n"
             f"✂️ Clips generated: {stats['clips']}"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_main')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     elif query.data == 'show_help':
         text = (
-            "ℹ️ **Help**\n\n"
-            "**Download Mode:**\n"
+            "ℹ️ Help\n\n"
+            "Download Mode:\n"
             "• Send video URL\n"
             "• Get video file (auto-optimized)\n\n"
-            "**Clip Mode:**\n"
+            "Clip Mode:\n"
             "• Upload video file\n"
             "• Get 3 × 5-sec preview clips\n\n"
-            "**Commands:**\n"
-            "`/start` - Main menu\n"
-            "`/help` - Show help"
+            "Commands:\n"
+            "/start - Main menu\n"
+            "/help - Show help"
         )
         keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_main')]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     elif query.data == 'back_main':
         keyboard = [
@@ -1024,16 +808,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("ℹ️ Help", callback_data='show_help')]
         ]
         await query.edit_message_text(
-            "🎬 **Video Bot**\n\nChoose your mode:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
+            "🎬 Video Bot\n\nChoose your mode:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎬 **Video Bot Help**\n\n"
-        "📥 **Download:** Send video URL\n"
-        "✂️ **Clips:** Upload video file\n\n"
+        "🎬 Video Bot Help\n\n"
+        "📥 Download: Send video URL\n"
+        "✂️ Clips: Upload video file (max 20MB)\n\n"
         "Use /start for full menu"
     )
 
@@ -1056,7 +839,7 @@ async def fallback_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
     
     await update.message.reply_text(
-        "Send:\n• Video URL to download\n• Video file for clips\n• /start for menu"
+        "Send:\n• Video URL to download\n• Video file for clips (max 20MB)\n• /start for menu"
     )
 
 def cleanup_temp_files():
