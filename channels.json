@@ -1,1 +1,68 @@
 
+{
+  "channels": [
+    {
+      "id": 1,
+      "title": "t sports",
+      "url": "http://103.166.152.22:8080/roarzone/edge2/tsports/index.m3u8?token=5f52fbe4713f3131cb6222d647249a0077f2baa6-87fc7ad1af2f96ddd56dca9fb03bd208-1764948540-1764937740",
+      "logo": "http://tvassets.roarzone.info/images/102.png",
+      "category": "sports",
+      "type": "m3u8",
+      "drm_key": null,
+      "created_at": "2024-05-15T10:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "title": "star sports 1",
+      "url": "http://103.166.152.22:8080/roarzone/bk/25/index.m3u8?token=cc0660ae36d49438fcc0986d45dc44055f5065bd-667bc2d71f2ad568b1f1d336b57aa5c9-1764948541-1764937741",
+      "logo": "http://tvassets.roarzone.info/images/25.png",
+      "category": "sports",
+      "type": "m3u8",
+      "drm_key": null,
+      "created_at": "2024-05-15T10:00:00.000Z"
+    },
+    {
+      "id": 3,
+      "title": "star sports 2",
+      "url": "http://103.166.152.22:8080/roarzone/bk/26/index.m3u8?token=f92f75efdb77b812f76e69fc8573f2c42f6c4194-31cf5695321ada0ac72a1ef9e6eae47b-1764948541-1764937741",
+      "logo": "http://tvassets.roarzone.info/images/26.png",
+      "category": "sports",
+      "type": "m3u8",
+      "drm_key": null,
+      "created_at": "2024-05-15T10:00:00.000Z"
+    },
+    {
+      "id": 4,
+      "title": "gazi tv",
+      "url": "http://103.166.152.22:8080/roarzone/bk/1/index.m3u8?token=008e0530b83aa7a4b25aac8ee22d90a600c986d1-ba9e1aeef4c567f62c0e4e9a40feddc7-1764948541-1764937741",
+      "logo": "http://tvassets.roarzone.info/images/1.png",
+      "category": "sports",
+      "type": "m3u8",
+      "drm_key": null,
+      "created_at": "2024-05-15T10:00:00.000Z"
+    },
+    {
+      "id": 5,
+      "title": "sony ten 1",
+      "url": "http://103.166.152.22:8080/roarzone/bk/20/index.m3u8?token=f4c41db640e986fe2951c37febda4ea51670dc33-0de9d4bff91c9bea2269c561a05e8ce4-1764948541-1764937741",
+      "logo": "http://tvassets.roarzone.info/images/20.png",
+      "category": "sports",
+      "type": "m3u8",
+      "drm_key": null,
+      "created_at": "2024-05-15T10:00:00.000Z"
+    },
+    {
+      "id": 6,
+      "title": "sony ten 2",
+      "url": "http://103.166.152.22:8080/roarzone/bk/21/index.m3u8?token=ba926d8a48e8417c827689f1ce61135703b0bf7c-4acd717d4f7c040ea186bdaf45f9e69a-1764948541-1764937741",
+      "logo": "http://tvassets.roarzone.info/images/21.png",
+      "category": "sports",
+      "type": "m3u8",
+      "drm_key": null,
+      "created_at": "2024-05-15T10:00:00.000Z"
+    }
+  ],
+  "categories": [
+    "sports"
+  ]
+}
