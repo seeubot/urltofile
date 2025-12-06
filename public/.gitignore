@@ -1,7 +1,0 @@
-node_modules/
-npm-debug.log
-.env
-.env.local
-channels.json
-*.log
-.DS_Store
