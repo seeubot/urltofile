@@ -3,1035 +3,256 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IPTV Streaming Platform</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/umd/lucide.min.js"></script>
+    <title>Streaming Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #111827;
+            background-color: #f8f9fa;
+            padding-top: 20px;
+        }
+        .dashboard-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            min-height: 100vh;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
         }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 1rem;
-        }
-
-        /* Header */
-        header {
-            background: #1f2937;
-            border-bottom: 1px solid #374151;
-            position: sticky;
-            top: 0;
-            z-index: 40;
-        }
-
-        .header-content {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem 0;
-        }
-
-        .header-title {
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-
-        .header-buttons {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
-
-        /* Buttons */
-        .btn {
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 0.375rem;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.875rem;
-            transition: all 0.2s;
-        }
-
-        .btn-primary { background: #2563eb; color: white; }
-        .btn-primary:hover { background: #1d4ed8; }
-        .btn-success { background: #16a34a; color: white; }
-        .btn-success:hover { background: #15803d; }
-        .btn-danger { background: #dc2626; color: white; }
-        .btn-danger:hover { background: #b91c1c; }
-        .btn-purple { background: #9333ea; color: white; }
-        .btn-purple:hover { background: #7e22ce; }
-        .btn-gray { background: #4b5563; color: white; }
-        .btn-gray:hover { background: #374151; }
-
-        .btn-sm {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.75rem;
-        }
-
-        /* Video Player */
-        .video-container {
-            background: black;
-        }
-
-        .video-info {
-            margin-bottom: 0.5rem;
-        }
-
-        .video-title {
-            font-size: 1.25rem;
-            font-weight: bold;
-        }
-
-        .video-category {
-            color: #9ca3af;
-            font-size: 0.875rem;
-        }
-
-        video {
-            width: 100%;
-            max-height: 24rem;
-            background: black;
-        }
-
-        /* Filters */
-        .filters {
-            background: #1f2937;
-            border-bottom: 1px solid #374151;
-            padding: 1rem 0;
-        }
-
-        .filters-content {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .search-box {
-            flex: 1;
-            min-width: 16rem;
-            position: relative;
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 0.75rem;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #9ca3af;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 0.5rem 0.5rem 0.5rem 2.5rem;
-            background: #374151;
-            border: none;
-            border-radius: 0.375rem;
-            color: white;
-            outline: none;
-        }
-
-        .category-buttons {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .category-btn {
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 0.375rem;
-            background: #374151;
-            color: white;
-            cursor: pointer;
-            text-transform: capitalize;
-            transition: background 0.2s;
-        }
-
-        .category-btn:hover {
-            background: #4b5563;
-        }
-
-        .category-btn.active {
-            background: #2563eb;
-        }
-
-        .view-buttons {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .view-btn {
-            padding: 0.5rem;
-            border: none;
-            border-radius: 0.375rem;
-            background: #374151;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-        }
-
-        .view-btn.active {
-            background: #2563eb;
-        }
-
-        /* Channels Grid */
-        .channels-section {
-            padding: 1.5rem 0;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 3rem 0;
-        }
-
-        .spinner {
-            display: inline-block;
-            width: 3rem;
-            height: 3rem;
-            border: 2px solid #1f2937;
-            border-top-color: #2563eb;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .channels-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 1rem;
-        }
-
         .channel-card {
-            background: #1f2937;
-            border-radius: 0.5rem;
-            overflow: hidden;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .channel-card:hover {
-            ring: 2px solid #2563eb;
-            transform: translateY(-2px);
-        }
-
-        .channel-thumbnail {
-            position: relative;
-            aspect-ratio: 16/9;
-            background: #374151;
-        }
-
-        .channel-thumbnail img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .channel-thumbnail-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2rem;
-        }
-
-        .play-overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(0, 0, 0, 0);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .channel-card:hover .play-overlay {
-            background: rgba(0, 0, 0, 0.5);
-        }
-
-        .play-button {
-            width: 3rem;
-            height: 3rem;
-            background: #2563eb;
+            transition: transform 0.3s, box-shadow 0.3s;
             border: none;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            opacity: 0;
-            transform: scale(0);
-            transition: all 0.2s;
+            border-radius: 10px;
+            overflow: hidden;
         }
-
-        .channel-card:hover .play-button {
-            opacity: 1;
-            transform: scale(1);
+        .channel-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
         }
-
-        .channel-info {
-            padding: 0.75rem;
-        }
-
-        .channel-title {
-            font-weight: 600;
+        .channel-url {
+            font-family: monospace;
+            background-color: #f8f9fa;
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
         }
-
-        .channel-category {
-            font-size: 0.75rem;
-            color: #9ca3af;
-            text-transform: capitalize;
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
         }
-
-        .channel-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
+        .status-active {
+            background-color: #d4edda;
+            color: #155724;
         }
-
-        /* List View */
-        .channels-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
+        .status-inactive {
+            background-color: #f8d7da;
+            color: #721c24;
         }
-
-        .channel-list-item {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            background: #1f2937;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            transition: background 0.2s;
+        .category-badge {
+            padding: 4px 8px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 600;
         }
-
-        .channel-list-item:hover {
-            background: #374151;
-        }
-
-        .channel-list-thumbnail {
-            width: 5rem;
-            height: 3rem;
-            background: #374151;
-            border-radius: 0.375rem;
-            overflow: hidden;
-            flex-shrink: 0;
-        }
-
-        .channel-list-thumbnail img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .channel-list-info {
-            flex: 1;
-        }
-
-        .channel-list-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        /* Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.5);
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-            z-index: 50;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
         .modal-content {
-            background: #1f2937;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            width: 100%;
-            max-width: 28rem;
-            max-height: 90vh;
-            overflow-y: auto;
+            border-radius: 10px;
         }
-
-        .modal-content.large {
-            max-width: 42rem;
-        }
-
-        .modal-header {
-            font-size: 1.25rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-input,
-        .form-select,
-        .form-textarea {
-            width: 100%;
-            padding: 0.5rem 1rem;
-            background: #374151;
-            border: none;
-            border-radius: 0.375rem;
-            color: white;
-            outline: none;
-        }
-
-        .form-textarea {
-            height: 16rem;
-            font-family: monospace;
-            font-size: 0.875rem;
-            resize: vertical;
-        }
-
-        .modal-buttons {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        .empty-state {
+        .stats-card {
             text-align: center;
-            padding: 3rem 0;
-            color: #9ca3af;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
         }
-
-        @media (max-width: 768px) {
-            .header-buttons {
-                flex-wrap: wrap;
-            }
-            
-            .channels-grid {
-                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            }
+        .stats-icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <header>
-        <div class="container">
-            <div class="header-content">
-                <h1 class="header-title">📺 IPTV Platform</h1>
-                <div class="header-buttons">
-                    <button id="adminBtn" class="btn btn-primary">
-                        <i data-lucide="lock"></i>
-                        <span>Admin</span>
-                    </button>
-                    <div id="adminButtons" class="hidden" style="display: flex; gap: 1rem;">
-                        <button id="importBtn" class="btn btn-purple">
-                            <i data-lucide="upload"></i>
-                            <span>Import M3U</span>
-                        </button>
-                        <button id="addChannelBtn" class="btn btn-success">
-                            <i data-lucide="plus"></i>
-                            <span>Add Channel</span>
-                        </button>
-                        <button id="logoutBtn" class="btn btn-danger">
-                            <i data-lucide="log-out"></i>
-                            <span>Logout</span>
-                        </button>
-                    </div>
+    <div class="container">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <div class="row">
+                <div class="col-md-8">
+                    <h1><i class="fas fa-stream"></i> Streaming Dashboard</h1>
+                    <p class="lead">Manage your streaming URLs and channels</p>
                 </div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Video Player -->
-    <div id="videoSection" class="video-container hidden">
-        <div class="container" style="padding-top: 1rem; padding-bottom: 1rem;">
-            <div class="video-info">
-                <h2 class="video-title" id="videoTitle"></h2>
-                <p class="video-category" id="videoCategory"></p>
-            </div>
-            <video id="videoPlayer" controls></video>
-        </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="filters">
-        <div class="container">
-            <div class="filters-content">
-                <div class="search-box">
-                    <i data-lucide="search" class="search-icon"></i>
-                    <input type="text" id="searchInput" class="search-input" placeholder="Search channels...">
-                </div>
-                <div class="category-buttons" id="categoryButtons">
-                    <button class="category-btn active" data-category="all">All</button>
-                </div>
-                <div class="view-buttons">
-                    <button class="view-btn active" data-view="grid">
-                        <i data-lucide="grid"></i>
-                    </button>
-                    <button class="view-btn" data-view="list">
-                        <i data-lucide="list"></i>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-light btn-lg" data-bs-toggle="modal" data-bs-target="#addChannelModal">
+                        <i class="fas fa-plus"></i> Add New Channel
                     </button>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Channels -->
-    <div class="channels-section">
-        <div class="container">
-            <div id="loadingState" class="loading">
-                <div class="spinner"></div>
-                <p style="margin-top: 1rem;">Loading channels...</p>
-            </div>
-            <div id="emptyState" class="empty-state hidden">
-                <p>No channels found</p>
-            </div>
-            <div id="channelsGrid" class="channels-grid"></div>
-            <div id="channelsList" class="channels-list hidden"></div>
-        </div>
-    </div>
-
-    <!-- Admin Login Modal -->
-    <div id="loginModal" class="modal">
-        <div class="modal-content">
-            <h3 class="modal-header">Admin Login</h3>
-            <div class="form-group">
-                <input type="password" id="passwordInput" class="form-input" placeholder="Admin Password">
-            </div>
-            <div class="modal-buttons">
-                <button id="loginSubmit" class="btn btn-primary" style="flex: 1;">Login</button>
-                <button id="loginCancel" class="btn btn-gray" style="flex: 1;">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Channel Form Modal -->
-    <div id="channelModal" class="modal">
-        <div class="modal-content">
-            <h3 class="modal-header" id="channelModalTitle">Add Channel</h3>
-            <div class="form-group">
-                <input type="text" id="channelTitle" class="form-input" placeholder="Channel Title">
-            </div>
-            <div class="form-group">
-                <input type="text" id="channelUrl" class="form-input" placeholder="Stream URL">
-            </div>
-            <div class="form-group">
-                <input type="text" id="channelLogo" class="form-input" placeholder="Logo URL">
-            </div>
-            <div class="form-group">
-                <input type="text" id="channelCategory" class="form-input" placeholder="Category">
-            </div>
-            <div class="form-group">
-                <select id="channelType" class="form-select">
-                    <option value="m3u8">HLS (M3U8)</option>
-                    <option value="mpd">DASH (MPD)</option>
-                    <option value="direct">Direct URL</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <input type="text" id="channelDrmKey" class="form-input" placeholder="DRM Key (optional)">
-            </div>
-            <div class="modal-buttons">
-                <button id="channelSave" class="btn btn-primary" style="flex: 1;">
-                    <i data-lucide="save"></i>
-                    <span>Save</span>
-                </button>
-                <button id="channelCancel" class="btn btn-gray" style="flex: 1;">
-                    <i data-lucide="x"></i>
-                    <span>Cancel</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Import M3U Modal -->
-    <div id="importModal" class="modal">
-        <div class="modal-content large">
-            <h3 class="modal-header">Import M3U Playlist</h3>
-            <div class="form-group">
-                <textarea id="m3uContent" class="form-textarea" placeholder="Paste your M3U playlist content here..."></textarea>
-            </div>
-            <div class="modal-buttons">
-                <button id="importSubmit" class="btn btn-primary" style="flex: 1;">
-                    <i data-lucide="upload"></i>
-                    <span>Import</span>
-                </button>
-                <button id="importCancel" class="btn btn-gray" style="flex: 1;">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Configuration
-        const API_URL = 'https://static-crane-seeutech-17dd4df3.koyeb.app';
-        
-        // State
-        let isAdmin = false;
-        let adminToken = '';
-        let channels = [];
-        let categories = [];
-        let selectedCategory = 'all';
-        let searchQuery = '';
-        let viewMode = 'grid';
-        let editingChannel = null;
-
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-            setupEventListeners();
-            fetchCategories();
-            fetchChannels();
-        });
-
-        // Event Listeners
-        function setupEventListeners() {
-            // Admin
-            document.getElementById('adminBtn').addEventListener('click', () => showModal('loginModal'));
-            document.getElementById('logoutBtn').addEventListener('click', logout);
-            document.getElementById('loginSubmit').addEventListener('click', handleLogin);
-            document.getElementById('loginCancel').addEventListener('click', () => hideModal('loginModal'));
-            document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') handleLogin();
-            });
-
-            // Channel operations
-            document.getElementById('addChannelBtn').addEventListener('click', () => {
-                editingChannel = null;
-                resetChannelForm();
-                document.getElementById('channelModalTitle').textContent = 'Add Channel';
-                showModal('channelModal');
-            });
-            document.getElementById('channelSave').addEventListener('click', handleSaveChannel);
-            document.getElementById('channelCancel').addEventListener('click', () => hideModal('channelModal'));
-
-            // Import
-            document.getElementById('importBtn').addEventListener('click', () => showModal('importModal'));
-            document.getElementById('importSubmit').addEventListener('click', handleImport);
-            document.getElementById('importCancel').addEventListener('click', () => hideModal('importModal'));
-
-            // Search and filters
-            document.getElementById('searchInput').addEventListener('input', (e) => {
-                searchQuery = e.target.value;
-                fetchChannels();
-            });
-
-            // View mode
-            document.querySelectorAll('.view-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const view = e.currentTarget.dataset.view;
-                    setViewMode(view);
-                });
-            });
-        }
-
-        // API Functions
-        async function fetchChannels() {
-            try {
-                showLoading();
-                const params = new URLSearchParams();
-                if (selectedCategory !== 'all') params.append('category', selectedCategory);
-                if (searchQuery) params.append('search', searchQuery);
-                
-                const response = await fetch(`${API_URL}/api/channels?${params}`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    channels = data.channels;
-                    renderChannels();
-                }
-            } catch (error) {
-                console.error('Error fetching channels:', error);
-                showEmpty();
-            }
-        }
-
-        async function fetchCategories() {
-            try {
-                const response = await fetch(`${API_URL}/api/categories`);
-                const data = await response.json();
-                if (data.success) {
-                    categories = data.categories;
-                    renderCategories();
-                }
-            } catch (error) {
-                console.error('Error fetching categories:', error);
-            }
-        }
-
-        async function handleLogin() {
-            const password = document.getElementById('passwordInput').value;
-            try {
-                const response = await fetch(`${API_URL}/api/admin/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    adminToken = data.token;
-                    isAdmin = true;
-                    document.getElementById('passwordInput').value = '';
-                    hideModal('loginModal');
-                    updateAdminUI();
-                    fetchChannels();
-                } else {
-                    alert('Invalid password');
-                }
-            } catch (error) {
-                alert('Login failed');
-            }
-        }
-
-        function logout() {
-            isAdmin = false;
-            adminToken = '';
-            updateAdminUI();
-            fetchChannels();
-        }
-
-        async function handleSaveChannel() {
-            const channelData = {
-                title: document.getElementById('channelTitle').value,
-                url: document.getElementById('channelUrl').value,
-                logo: document.getElementById('channelLogo').value,
-                category: document.getElementById('channelCategory').value,
-                type: document.getElementById('channelType').value,
-                drm_key: document.getElementById('channelDrmKey').value
-            };
-
-            try {
-                const url = editingChannel 
-                    ? `${API_URL}/api/admin/channels/${editingChannel.id}`
-                    : `${API_URL}/api/admin/channels`;
-                
-                const response = await fetch(url, {
-                    method: editingChannel ? 'PUT' : 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${adminToken}`
-                    },
-                    body: JSON.stringify(channelData)
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    hideModal('channelModal');
-                    fetchCategories();
-                    fetchChannels();
-                }
-            } catch (error) {
-                alert('Failed to save channel');
-            }
-        }
-
-        async function deleteChannel(id) {
-            if (!confirm('Are you sure you want to delete this channel?')) return;
-            
-            try {
-                const response = await fetch(`${API_URL}/api/admin/channels/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${adminToken}` }
-                });
-                
-                if (response.ok) {
-                    fetchChannels();
-                }
-            } catch (error) {
-                alert('Failed to delete channel');
-            }
-        }
-
-        async function handleImport() {
-            const content = document.getElementById('m3uContent').value;
-            try {
-                const response = await fetch(`${API_URL}/api/admin/import`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${adminToken}`
-                    },
-                    body: JSON.stringify({ content })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    alert(`Successfully imported ${data.imported} channels`);
-                    document.getElementById('m3uContent').value = '';
-                    hideModal('importModal');
-                    fetchCategories();
-                    fetchChannels();
-                }
-            } catch (error) {
-                alert('Import failed');
-            }
-        }
-
-        // Render Functions
-        function renderChannels() {
-            hideLoading();
-            
-            if (channels.length === 0) {
-                showEmpty();
-                return;
-            }
-
-            hideEmpty();
-            
-            if (viewMode === 'grid') {
-                renderGrid();
-            } else {
-                renderList();
-            }
-        }
-
-        function renderGrid() {
-            const grid = document.getElementById('channelsGrid');
-            grid.innerHTML = '';
-            grid.classList.remove('hidden');
-            document.getElementById('channelsList').classList.add('hidden');
-
-            channels.forEach(channel => {
-                const card = createChannelCard(channel);
-                grid.appendChild(card);
-            });
-
-            lucide.createIcons();
-        }
-
-        function renderList() {
-            const list = document.getElementById('channelsList');
-            list.innerHTML = '';
-            list.classList.remove('hidden');
-            document.getElementById('channelsGrid').classList.add('hidden');
-
-            channels.forEach(channel => {
-                const item = createChannelListItem(channel);
-                list.appendChild(item);
-            });
-
-            lucide.createIcons();
-        }
-
-        function createChannelCard(channel) {
-            const card = document.createElement('div');
-            card.className = 'channel-card';
-            
-            card.innerHTML = `
-                <div class="channel-thumbnail">
-                    ${channel.logo 
-                        ? `<img src="${channel.logo}" alt="${channel.title}">`
-                        : '<div class="channel-thumbnail-placeholder">📺</div>'
-                    }
-                    <div class="play-overlay">
-                        <button class="play-button" onclick="playChannel(${channel.id})">
-                            <i data-lucide="play" style="fill: currentColor;"></i>
-                        </button>
-                    </div>
+        <!-- Stats Section -->
+        <div class="row mb-4" id="statsSection">
+            <div class="col-md-3">
+                <div class="stats-card bg-primary text-white">
+                    <i class="fas fa-tv stats-icon"></i>
+                    <h3 id="totalChannels">0</h3>
+                    <p>Total Channels</p>
                 </div>
-                <div class="channel-info">
-                    <h3 class="channel-title">${channel.title}</h3>
-                    <p class="channel-category">${channel.category}</p>
-                    ${isAdmin ? `
-                        <div class="channel-actions">
-                            <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="editChannel(${channel.id})">
-                                <i data-lucide="edit-2"></i>
-                                Edit
-                            </button>
-                            <button class="btn btn-danger btn-sm" style="flex: 1;" onclick="deleteChannel(${channel.id})">
-                                <i data-lucide="trash-2"></i>
-                                Delete
-                            </button>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card bg-success text-white">
+                    <i class="fas fa-play-circle stats-icon"></i>
+                    <h3 id="activeChannels">0</h3>
+                    <p>Active Channels</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card bg-info text-white">
+                    <i class="fas fa-tags stats-icon"></i>
+                    <h3 id="totalCategories">0</h3>
+                    <p>Categories</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card bg-warning text-white">
+                    <i class="fas fa-chart-bar stats-icon"></i>
+                    <h3 id="lastUpdated">-</h3>
+                    <p>Last Updated</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <input type="text" class="form-control" id="searchInput" placeholder="Search channels...">
+                            </div>
+                            <div class="col-md-2">
+                                <select class="form-select" id="categoryFilter">
+                                    <option value="">All Categories</option>
+                                    <option value="Movie">Movie</option>
+                                    <option value="TV">TV</option>
+                                    <option value="Sports">Sports</option>
+                                    <option value="News">News</option>
+                                    <option value="Entertainment">Entertainment</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <select class="form-select" id="statusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="true">Active</option>
+                                    <option value="false">Inactive</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <select class="form-select" id="qualityFilter">
+                                    <option value="">All Quality</option>
+                                    <option value="SD">SD</option>
+                                    <option value="HD">HD</option>
+                                    <option value="FHD">FHD</option>
+                                    <option value="4K">4K</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 text-end">
+                                <button class="btn btn-secondary" onclick="refreshChannels()">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
                         </div>
-                    ` : ''}
+                    </div>
                 </div>
-            `;
-            
-            return card;
-        }
+            </div>
+        </div>
 
-        function createChannelListItem(channel) {
-            const item = document.createElement('div');
-            item.className = 'channel-list-item';
-            
-            item.innerHTML = `
-                <div class="channel-list-thumbnail">
-                    ${channel.logo 
-                        ? `<img src="${channel.logo}" alt="${channel.title}">`
-                        : '<div class="channel-thumbnail-placeholder">📺</div>'
-                    }
+        <!-- Channels Grid -->
+        <div class="row" id="channelsGrid">
+            <!-- Channels will be loaded here -->
+        </div>
+
+        <!-- No Channels Message -->
+        <div class="row d-none" id="noChannelsMessage">
+            <div class="col-md-12">
+                <div class="alert alert-info">
+                    <h4>No channels found</h4>
+                    <p>Click "Add New Channel" to add your first streaming URL.</p>
                 </div>
-                <div class="channel-list-info">
-                    <h3 class="channel-title">${channel.title}</h3>
-                    <p class="channel-category">${channel.category}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Channel Modal -->
+    <div class="modal fade" id="channelModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Add New Channel</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="channel-list-actions">
-                    <button class="btn btn-primary" onclick="playChannel(${channel.id})">
-                        <i data-lucide="play"></i>
-                        Play
-                    </button>
-                    ${isAdmin ? `
-                        <button class="btn btn-gray" onclick="editChannel(${channel.id})">
-                            <i data-lucide="edit-2"></i>
-                        </button>
-                        <button class="btn btn-danger" onclick="deleteChannel(${channel.id})">
-                            <i data-lucide="trash-2"></i>
-                        </button>
-                    ` : ''}
+                <div class="modal-body">
+                    <form id="channelForm">
+                        <input type="hidden" id="channelId">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Channel Name *</label>
+                                <input type="text" class="form-control" id="channelName" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Category</label>
+                                <select class="form-select" id="channelCategory">
+                                    <option value="Movie">Movie</option>
+                                    <option value="TV">TV</option>
+                                    <option value="Sports">Sports</option>
+                                    <option value="News">News</option>
+                                    <option value="Entertainment">Entertainment</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Streaming URL *</label>
+                            <input type="url" class="form-control" id="channelUrl" required placeholder="https://example.com/stream.m3u8">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Quality</label>
+                                <select class="form-select" id="channelQuality">
+                                    <option value="SD">SD</option>
+                                    <option value="HD" selected>HD</option>
+                                    <option value="FHD">FHD</option>
+                                    <option value="4K">4K</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Language</label>
+                                <input type="text" class="form-control" id="channelLanguage" value="English">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Country</label>
+                                <input type="text" class="form-control" id="channelCountry" value="International">
+                            </div>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="channelActive" checked>
+                            <label class="form-check-label">Active Channel</label>
+                        </div>
+                    </form>
                 </div>
-            `;
-            
-            return item;
-        }
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="deleteBtn" style="display: none;">Delete</button>
+                    <button type="button" class="btn btn-primary" onclick="saveChannel()">Save Channel</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        function renderCategories() {
-            const container = document.getElementById('categoryButtons');
-            const allBtn = container.querySelector('[data-category="all"]');
-            
-            categories.forEach(cat => {
-                if (!container.querySelector(`[data-category="${cat}"]`)) {
-                    const btn = document.createElement('button');
-                    btn.className = 'category-btn';
-                    btn.dataset.category = cat;
-                    btn.textContent = cat;
-                    btn.addEventListener('click', (e) => {
-                        selectedCategory = cat;
-                        updateCategoryButtons();
-                        fetchChannels();
-                    });
-                    container.appendChild(btn);
-                }
-            });
-
-            allBtn.addEventListener('click', () => {
-                selectedCategory = 'all';
-                updateCategoryButtons();
-                fetchChannels();
-            });
-        }
-
-        function updateCategoryButtons() {
-            document.querySelectorAll('.category-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.category === selectedCategory);
-            });
-        }
-
-        // UI Helper Functions
-        function playChannel(id) {
-            const channel = channels.find(c => c.id === id);
-            if (!channel) return;
-
-            document.getElementById('videoTitle').textContent = channel.title;
-            document.getElementById('videoCategory').textContent = channel.category;
-            document.getElementById('videoSection').classList.remove('hidden');
-            
-            const video = document.getElementById('videoPlayer');
-            video.src = channel.url;
-            video.load();
-            video.play();
-            
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        function editChannel(id) {
-            const channel = channels.find(c => c.id === id);
-            if (!channel) return;
-
-            editingChannel = channel;
-            document.getElementById('channelModalTitle').textContent = 'Edit Channel';
-            document.getElementById('channelTitle').value = channel.title;
-            document.getElementById('channelUrl').value = channel.url;
-            document.getElementById('channelLogo').value = channel.logo || '';
-            document.getElementById('channelCategory').value = channel.category;
-            document.getElementById('channelType').value = channel.type || 'm3u8';
-            document.getElementById('channelDrmKey').value = channel.drm_key || '';
-            showModal('channelModal');
-        }
-
-        function resetChannelForm() {
-            document.getElementById('channelTitle').value = '';
-            document.getElementById('channelUrl').value = '';
-            document.getElementById('channelLogo').value = '';
-            document.getElementById('channelCategory').value = 'sports';
-            document.getElementById('channelType').value = 'm3u8';
-            document.getElementById('channelDrmKey').value = '';
-        }
-
-        function setViewMode(mode) {
-            viewMode = mode;
-            document.querySelectorAll('.view-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.view === mode);
-            });
-            renderChannels();
-        }
-
-        function updateAdminUI() {
-            document.getElementById('adminBtn').classList.toggle('hidden', isAdmin);
-            document.getElementById('adminButtons').classList.toggle('hidden', !isAdmin);
-        }
-
-        function showModal(id) {
-            document.getElementById(id).classList.add('active');
-        }
-
-        function hideModal(id) {
-            document.getElementById(id).classList.remove('active');
-        }
-
-        function showLoading() {
-            document.getElementById('loadingState').classList.remove('hidden');
-            document.getElementById('emptyState').classList.add('hidden');
-            document.getElementById('channelsGrid').classList.add('hidden');
-            document.getElementById('channelsList').classList.add('hidden');
-        }
-
-        function hideLoading() {
-            document.getElementById('loadingState').classList.add('hidden');
-        }
-
-        function showEmpty() {
-            document.getElementById('emptyState').classList.remove('hidden');
-            document.getElementById('channelsGrid').classList.add('hidden');
-            document.getElementById('channelsList').classList.add('hidden');
-        }
-
-        function hideEmpty() {
-            document.getElementById('emptyState').classList.add('hidden');
-        }
-
-        // Make functions globally available
-        window.playChannel = playChannel;
-        window.editChannel = editChannel;
-        window.deleteChannel = deleteChannel;
-    </script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="dashboard.js"></script>
 </body>
 </html>
