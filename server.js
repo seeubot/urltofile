@@ -7,22 +7,53 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Health check state
+let isHealthy = false;
+let dbConnected = false;
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
 // MongoDB Connection
-const MONGODB_URI = 'mongodb+srv://movie:movie@movie.tylkv.mongodb.net/movie?retryWrites=true&w=majority&appName=movie';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://movie:movie@movie.tylkv.mongodb.net/movie?retryWrites=true&w=majority&appName=movie';
 
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
 })
-.then(() => console.log('✅ MongoDB Connected Successfully'))
+.then(() => {
+    console.log('✅ MongoDB Connected Successfully');
+    dbConnected = true;
+    isHealthy = true;
+})
 .catch(err => {
     console.error('❌ MongoDB Connection Error:', err.message);
     console.log('📌 Using MongoDB URI:', MONGODB_URI.replace(/:[^:]*@/, ':****@'));
+    dbConnected = false;
+    isHealthy = false;
+});
+
+// Monitor MongoDB connection
+mongoose.connection.on('disconnected', () => {
+    console.warn('⚠️  MongoDB Disconnected');
+    dbConnected = false;
+    isHealthy = false;
+});
+
+mongoose.connection.on('reconnected', () => {
+    console.log('✅ MongoDB Reconnected');
+    dbConnected = true;
+    isHealthy = true;
+});
+
+mongoose.connection.on('error', (err) => {
+    console.error('❌ MongoDB Error:', err.message);
+    dbConnected = false;
+    isHealthy = false;
 });
 
 // Channel Schema
@@ -75,14 +106,80 @@ const channelSchema = new mongoose.Schema({
 
 const Channel = mongoose.model('Channel', channelSchema);
 
+// Health Check Endpoints
+app.get('/health', (req, res) => {
+    if (isHealthy && dbConnected) {
+        res.status(200).json({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            database: 'connected',
+            mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+        });
+    } else {
+        res.status(503).json({
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            database: dbConnected ? 'connected' : 'disconnected',
+            mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+        });
+    }
+});
+
+app.get('/healthz', (req, res) => {
+    // Simple health check for k8s/docker
+    if (isHealthy) {
+        res.status(200).send('OK');
+    } else {
+        res.status(503).send('Service Unavailable');
+    }
+});
+
+app.get('/ready', async (req, res) => {
+    // Readiness probe - checks if app can serve traffic
+    try {
+        if (mongoose.connection.readyState === 1) {
+            // Test database query
+            await mongoose.connection.db.admin().ping();
+            res.status(200).json({ 
+                ready: true,
+                database: 'ready'
+            });
+        } else {
+            res.status(503).json({ 
+                ready: false,
+                database: 'not ready'
+            });
+        }
+    } catch (error) {
+        res.status(503).json({ 
+            ready: false,
+            error: error.message 
+        });
+    }
+});
+
+app.get('/live', (req, res) => {
+    // Liveness probe - checks if app is running
+    res.status(200).json({ 
+        alive: true,
+        timestamp: new Date().toISOString()
+    });
+});
+
 // API Routes
 
 // Get all channels
 app.get('/api/channels', async (req, res) => {
     try {
+        if (!dbConnected) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
         const channels = await Channel.find().sort({ createdAt: -1 });
         res.json(channels);
     } catch (error) {
+        console.error('Error fetching channels:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -90,12 +187,16 @@ app.get('/api/channels', async (req, res) => {
 // Get single channel
 app.get('/api/channels/:id', async (req, res) => {
     try {
+        if (!dbConnected) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
         const channel = await Channel.findById(req.params.id);
         if (!channel) {
             return res.status(404).json({ error: 'Channel not found' });
         }
         res.json(channel);
     } catch (error) {
+        console.error('Error fetching channel:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -103,10 +204,14 @@ app.get('/api/channels/:id', async (req, res) => {
 // Create new channel
 app.post('/api/channels', async (req, res) => {
     try {
+        if (!dbConnected) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
         const channel = new Channel(req.body);
         await channel.save();
         res.status(201).json(channel);
     } catch (error) {
+        console.error('Error creating channel:', error);
         res.status(400).json({ error: error.message });
     }
 });
@@ -114,6 +219,9 @@ app.post('/api/channels', async (req, res) => {
 // Update channel
 app.put('/api/channels/:id', async (req, res) => {
     try {
+        if (!dbConnected) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
         req.body.updatedAt = Date.now();
         const channel = await Channel.findByIdAndUpdate(
             req.params.id,
@@ -125,6 +233,7 @@ app.put('/api/channels/:id', async (req, res) => {
         }
         res.json(channel);
     } catch (error) {
+        console.error('Error updating channel:', error);
         res.status(400).json({ error: error.message });
     }
 });
@@ -132,12 +241,16 @@ app.put('/api/channels/:id', async (req, res) => {
 // Delete channel
 app.delete('/api/channels/:id', async (req, res) => {
     try {
+        if (!dbConnected) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
         const channel = await Channel.findByIdAndDelete(req.params.id);
         if (!channel) {
             return res.status(404).json({ error: 'Channel not found' });
         }
         res.json({ message: 'Channel deleted successfully' });
     } catch (error) {
+        console.error('Error deleting channel:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -145,6 +258,9 @@ app.delete('/api/channels/:id', async (req, res) => {
 // Test URL endpoint
 app.post('/api/channels/:id/test', async (req, res) => {
     try {
+        if (!dbConnected) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
         const channel = await Channel.findByIdAndUpdate(
             req.params.id,
             { lastTested: Date.now() },
@@ -155,6 +271,7 @@ app.post('/api/channels/:id/test', async (req, res) => {
         }
         res.json({ message: 'URL test recorded', lastTested: channel.lastTested });
     } catch (error) {
+        console.error('Error testing channel:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -162,6 +279,9 @@ app.post('/api/channels/:id/test', async (req, res) => {
 // Get dashboard stats
 app.get('/api/stats', async (req, res) => {
     try {
+        if (!dbConnected) {
+            return res.status(503).json({ error: 'Database not connected' });
+        }
         const totalChannels = await Channel.countDocuments();
         const activeChannels = await Channel.countDocuments({ isActive: true });
         const categories = await Channel.aggregate([
@@ -179,6 +299,7 @@ app.get('/api/stats', async (req, res) => {
             qualities
         });
     } catch (error) {
+        console.error('Error fetching stats:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -188,15 +309,62 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
+    console.error('Unhandled error:', err.stack);
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
+// Graceful shutdown
+const gracefulShutdown = async (signal) => {
+    console.log(`\n${signal} received. Starting graceful shutdown...`);
+    
+    server.close(async () => {
+        console.log('✅ HTTP server closed');
+        
+        try {
+            await mongoose.connection.close();
+            console.log('✅ MongoDB connection closed');
+            process.exit(0);
+        } catch (err) {
+            console.error('❌ Error during shutdown:', err);
+            process.exit(1);
+        }
+    });
+    
+    // Force shutdown after 10 seconds
+    setTimeout(() => {
+        console.error('⚠️  Forced shutdown after timeout');
+        process.exit(1);
+    }, 10000);
+};
+
+// Handle termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+});
+
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🌐 Dashboard available at: http://localhost:${PORT}`);
     console.log(`📊 API available at: http://localhost:${PORT}/api/channels`);
+    console.log(`💚 Health check: http://localhost:${PORT}/health`);
+    console.log(`🔍 Ready check: http://localhost:${PORT}/ready`);
+    console.log(`❤️  Live check: http://localhost:${PORT}/live`);
 });
