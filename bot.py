@@ -1,315 +1,384 @@
-import os
-import json
-import re
-from datetime import datetime
-from aiohttp import web
-import aiohttp_cors
-import logging
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs').promises;
+const path = require('path');
 
-# Configuration
-PORT = int(os.getenv('PORT', 8000))
-ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')
-DATA_FILE = 'channels.json'
+const app = express();
+const PORT = process.env.PORT || 8000;
+const DATA_FILE = 'channels.json';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+// Middleware
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-# In-memory storage (will be replaced with persistent storage)
-channels_data = {
-    'channels': [],
-    'categories': set(['sports', 'entertainment', 'news', 'movies'])
+// Serve static files (for frontend)
+app.use(express.static('public'));
+
+// Data Storage
+let channelsData = { channels: [], categories: [] };
+const dataFilePath = path.join(__dirname, DATA_FILE);
+
+/**
+ * Loads channel data from JSON file
+ */
+async function loadChannelsData() {
+    try {
+        const data = await fs.readFile(dataFilePath, 'utf8');
+        channelsData = JSON.parse(data);
+        console.log(`✅ Loaded ${channelsData.channels.length} channels`);
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            console.log(`⚠️  ${DATA_FILE} not found. Starting with empty data.`);
+            await saveChannelsData();
+        } else {
+            console.error("Error loading data:", error);
+        }
+    }
 }
 
-def load_channels():
-    """Load channels from JSON file"""
-    global channels_data
-    try:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, 'r') as f:
-                data = json.load(f)
-                channels_data['channels'] = data.get('channels', [])
-                channels_data['categories'] = set(data.get('categories', ['sports']))
-            logger.info(f"✅ Loaded {len(channels_data['channels'])} channels")
-    except Exception as e:
-        logger.error(f"Error loading channels: {e}")
+/**
+ * Saves channel data to JSON file
+ */
+async function saveChannelsData() {
+    try {
+        // Re-index IDs
+        channelsData.channels.forEach((channel, index) => {
+            channel.id = index + 1;
+        });
+        
+        // Update categories
+        const categoriesSet = new Set(
+            channelsData.channels
+                .map(c => c.category)
+                .filter(c => c && c.trim())
+        );
+        channelsData.categories = Array.from(categoriesSet).sort();
 
-def save_channels():
-    """Save channels to JSON file"""
-    try:
-        with open(DATA_FILE, 'w') as f:
-            json.dump({
-                'channels': channels_data['channels'],
-                'categories': list(channels_data['categories'])
-            }, f, indent=2)
-        logger.info(f"💾 Saved {len(channels_data['channels'])} channels")
-    except Exception as e:
-        logger.error(f"Error saving channels: {e}")
+        await fs.writeFile(dataFilePath, JSON.stringify(channelsData, null, 2), 'utf8');
+        console.log(`💾 Saved ${channelsData.channels.length} channels`);
+    } catch (error) {
+        console.error("Error saving data:", error);
+    }
+}
 
-def parse_m3u(content):
-    """Parse M3U playlist content"""
-    channels = []
-    lines = content.strip().split('\n')
+/**
+ * Remove sensitive data from channels
+ */
+function cleanChannels(channelList) {
+    if (!Array.isArray(channelList)) return [];
+    return channelList.map(c => {
+        const { drm_key, ...safeChannel } = c;
+        return safeChannel;
+    });
+}
+
+/**
+ * Parse M3U playlist content
+ */
+function parseM3U(content) {
+    const channels = [];
+    const lines = content.split('\n');
+    let currentChannel = null;
+
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        if (trimmedLine.startsWith('#EXTINF:')) {
+            currentChannel = {
+                id: null,
+                title: 'Unknown Channel',
+                url: '',
+                logo: '',
+                category: 'uncategorized',
+                type: 'm3u8',
+                drm_key: null,
+                created_at: new Date().toISOString()
+            };
+
+            // Extract logo
+            const logoMatch = trimmedLine.match(/tvg-logo="([^"]+)"/);
+            if (logoMatch) currentChannel.logo = logoMatch[1];
+
+            // Extract category
+            const categoryMatch = trimmedLine.match(/group-title="([^"]+)"/);
+            if (categoryMatch) currentChannel.category = categoryMatch[1];
+
+            // Extract title
+            const titleMatch = trimmedLine.match(/,(.+)$/);
+            if (titleMatch) currentChannel.title = titleMatch[1].trim();
+
+        } else if (currentChannel && trimmedLine && !trimmedLine.startsWith('#')) {
+            currentChannel.url = trimmedLine;
+            currentChannel.type = trimmedLine.includes('.m3u8') ? 'm3u8' : 
+                                 trimmedLine.includes('.mpd') ? 'mpd' : 'direct';
+            channels.push(currentChannel);
+            currentChannel = null;
+        }
+    }
+    return channels;
+}
+
+/**
+ * Admin authentication middleware
+ */
+function verifyAdmin(req, res, next) {
+    const authHeader = req.headers['authorization'];
     
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        
-        if line.startswith('#EXTINF:'):
-            # Parse channel info
-            channel = {}
-            
-            # Extract logo
-            logo_match = re.search(r'tvg-logo="([^"]+)"', line)
-            if logo_match:
-                channel['logo'] = logo_match.group(1)
-            
-            # Extract category
-            category_match = re.search(r'group-title="([^"]+)"', line)
-            if category_match:
-                channel['category'] = category_match.group(1)
-                channels_data['categories'].add(category_match.group(1))
-            
-            # Extract title (after last comma)
-            title_match = re.search(r',(.+)$', line)
-            if title_match:
-                channel['title'] = title_match.group(1).strip()
-            
-            # Get URL from next line
-            if i + 1 < len(lines):
-                url_line = lines[i + 1].strip()
-                if url_line and not url_line.startswith('#'):
-                    channel['url'] = url_line
-                    channel['type'] = 'm3u8' if '.m3u8' in url_line else 'mpd' if '.mpd' in url_line else 'direct'
-                    channel['id'] = len(channels_data['channels']) + len(channels) + 1
-                    channel['created_at'] = datetime.now().isoformat()
-                    channels.append(channel)
-                    i += 1
-        
-        i += 1
+    if (!authHeader) {
+        return res.status(401).json({ success: false, error: 'Authorization required' });
+    }
+
+    const [scheme, token] = authHeader.split(' ');
+
+    if (scheme !== 'Bearer' || token !== ADMIN_PASSWORD) {
+        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+
+    next();
+}
+
+// ============= PUBLIC ROUTES =============
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        channels: channelsData.channels.length,
+        categories: channelsData.categories.length,
+        uptime: process.uptime()
+    });
+});
+
+app.get('/api/channels', (req, res) => {
+    try {
+        const { category, search } = req.query;
+        let filtered = channelsData.channels;
+
+        if (category) {
+            filtered = filtered.filter(c => 
+                c.category && c.category.toLowerCase() === category.toLowerCase()
+            );
+        }
+
+        if (search) {
+            const term = search.toLowerCase();
+            filtered = filtered.filter(c => 
+                c.title && c.title.toLowerCase().includes(term)
+            );
+        }
+
+        res.json({
+            success: true,
+            channels: cleanChannels(filtered),
+            total: filtered.length
+        });
+    } catch (error) {
+        console.error("Error fetching channels:", error);
+        res.status(500).json({ success: false, error: 'Server error' });
+    }
+});
+
+app.get('/api/channels/:id', (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        const channel = channelsData.channels.find(c => c.id === id);
+
+        if (channel) {
+            res.json({ success: true, channel: cleanChannels([channel])[0] });
+        } else {
+            res.status(404).json({ success: false, error: 'Channel not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Server error' });
+    }
+});
+
+app.get('/api/categories', (req, res) => {
+    res.json({ 
+        success: true, 
+        categories: channelsData.categories 
+    });
+});
+
+// ============= ADMIN ROUTES =============
+
+app.post('/api/admin/login', (req, res) => {
+    const { password } = req.body;
     
-    return channels
+    if (password === ADMIN_PASSWORD) {
+        res.json({ success: true, token: ADMIN_PASSWORD });
+    } else {
+        res.status(401).json({ success: false, error: 'Invalid password' });
+    }
+});
 
-# ============= API HANDLERS =============
-
-async def health_check(request):
-    """Health check endpoint"""
-    return web.json_response({
-        'status': 'ok',
-        'channels': len(channels_data['channels']),
-        'categories': len(channels_data['categories'])
-    })
-
-async def get_channels(request):
-    """Get all channels or filter by category"""
-    try:
-        category = request.query.get('category')
-        search = request.query.get('search', '').lower()
+app.post('/api/admin/channels', verifyAdmin, async (req, res) => {
+    try {
+        const data = req.body;
         
-        filtered_channels = channels_data['channels']
-        
-        if category:
-            filtered_channels = [c for c in filtered_channels if c.get('category') == category]
-        
-        if search:
-            filtered_channels = [
-                c for c in filtered_channels 
-                if search in c.get('title', '').lower()
-            ]
-        
-        return web.json_response({
-            'success': True,
-            'channels': filtered_channels,
-            'total': len(filtered_channels)
-        })
-    except Exception as e:
-        logger.error(f"Error getting channels: {e}")
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
+        if (!data.url) {
+            return res.status(400).json({ success: false, error: 'URL required' });
+        }
 
-async def get_categories(request):
-    """Get all categories"""
-    return web.json_response({
-        'success': True,
-        'categories': sorted(list(channels_data['categories']))
-    })
-
-async def get_channel(request):
-    """Get single channel by ID"""
-    try:
-        channel_id = int(request.match_info['id'])
-        channel = next((c for c in channels_data['channels'] if c['id'] == channel_id), None)
+        const newChannel = {
+            id: channelsData.channels.length + 1,
+            title: data.title || 'New Channel',
+            url: data.url,
+            logo: data.logo || '',
+            category: data.category || 'uncategorized',
+            type: data.type || 'm3u8',
+            drm_key: data.drm_key || null,
+            created_at: new Date().toISOString()
+        };
         
-        if channel:
-            return web.json_response({'success': True, 'channel': channel})
-        else:
-            return web.json_response({'success': False, 'error': 'Channel not found'}, status=404)
-    except Exception as e:
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
-
-# ============= ADMIN API HANDLERS =============
-
-def verify_admin(request):
-    """Verify admin authentication"""
-    auth = request.headers.get('Authorization', '')
-    return auth == f'Bearer {ADMIN_PASSWORD}'
-
-async def admin_login(request):
-    """Admin login"""
-    try:
-        data = await request.json()
-        password = data.get('password')
+        channelsData.channels.push(newChannel);
+        await saveChannelsData();
         
-        if password == ADMIN_PASSWORD:
-            return web.json_response({
-                'success': True,
-                'token': ADMIN_PASSWORD
-            })
-        else:
-            return web.json_response({'success': False, 'error': 'Invalid password'}, status=401)
-    except Exception as e:
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
+        res.json({ success: true, channel: cleanChannels([newChannel])[0] });
+    } catch (error) {
+        console.error("Error adding channel:", error);
+        res.status(500).json({ success: false, error: 'Failed to add channel' });
+    }
+});
 
-async def add_channel(request):
-    """Add new channel"""
-    if not verify_admin(request):
-        return web.json_response({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        data = await request.json()
+app.put('/api/admin/channels/:id', verifyAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        const data = req.body;
+
+        const channel = channelsData.channels.find(c => c.id === id);
+
+        if (!channel) {
+            return res.status(404).json({ success: false, error: 'Channel not found' });
+        }
+
+        // Update fields
+        if (data.title !== undefined) channel.title = data.title;
+        if (data.url !== undefined) channel.url = data.url;
+        if (data.logo !== undefined) channel.logo = data.logo;
+        if (data.category !== undefined) channel.category = data.category;
+        if (data.type !== undefined) channel.type = data.type;
+        if (data.drm_key !== undefined) channel.drm_key = data.drm_key;
         
-        channel = {
-            'id': len(channels_data['channels']) + 1,
-            'title': data['title'],
-            'url': data['url'],
-            'logo': data.get('logo', ''),
-            'category': data.get('category', 'uncategorized'),
-            'type': data.get('type', 'm3u8'),
-            'drm_key': data.get('drm_key'),
-            'created_at': datetime.now().isoformat()
+        channel.updated_at = new Date().toISOString();
+
+        await saveChannelsData();
+        
+        res.json({ success: true, channel: cleanChannels([channel])[0] });
+    } catch (error) {
+        console.error("Error updating channel:", error);
+        res.status(500).json({ success: false, error: 'Failed to update channel' });
+    }
+});
+
+app.delete('/api/admin/channels/:id', verifyAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        const initialLength = channelsData.channels.length;
+
+        channelsData.channels = channelsData.channels.filter(c => c.id !== id);
+        
+        if (channelsData.channels.length === initialLength) {
+            return res.status(404).json({ success: false, error: 'Channel not found' });
+        }
+
+        await saveChannelsData();
+        
+        res.json({ success: true, message: 'Channel deleted' });
+    } catch (error) {
+        console.error("Error deleting channel:", error);
+        res.status(500).json({ success: false, error: 'Failed to delete channel' });
+    }
+});
+
+app.post('/api/admin/import', verifyAdmin, async (req, res) => {
+    try {
+        const { content } = req.body;
+        
+        if (!content) {
+            return res.status(400).json({ success: false, error: 'M3U content required' });
         }
         
-        channels_data['channels'].append(channel)
-        channels_data['categories'].add(channel['category'])
-        save_channels()
+        const newChannels = parseM3U(content);
         
-        return web.json_response({'success': True, 'channel': channel})
-    except Exception as e:
-        logger.error(f"Error adding channel: {e}")
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
+        if (newChannels.length === 0) {
+            return res.status(400).json({ success: false, error: 'No valid channels found' });
+        }
+        
+        channelsData.channels.push(...newChannels);
+        await saveChannelsData();
 
-async def update_channel(request):
-    """Update existing channel"""
-    if not verify_admin(request):
-        return web.json_response({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        channel_id = int(request.match_info['id'])
-        data = await request.json()
-        
-        channel = next((c for c in channels_data['channels'] if c['id'] == channel_id), None)
-        if not channel:
-            return web.json_response({'success': False, 'error': 'Channel not found'}, status=404)
-        
-        # Update fields
-        channel.update({
-            'title': data.get('title', channel['title']),
-            'url': data.get('url', channel['url']),
-            'logo': data.get('logo', channel.get('logo', '')),
-            'category': data.get('category', channel.get('category', 'uncategorized')),
-            'type': data.get('type', channel.get('type', 'm3u8')),
-            'drm_key': data.get('drm_key', channel.get('drm_key')),
-            'updated_at': datetime.now().isoformat()
-        })
-        
-        channels_data['categories'].add(channel['category'])
-        save_channels()
-        
-        return web.json_response({'success': True, 'channel': channel})
-    except Exception as e:
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
+        res.json({
+            success: true,
+            imported: newChannels.length,
+            total: channelsData.channels.length
+        });
+    } catch (error) {
+        console.error("Error importing M3U:", error);
+        res.status(500).json({ success: false, error: 'Import failed' });
+    }
+});
 
-async def delete_channel(request):
-    """Delete channel"""
-    if not verify_admin(request):
-        return web.json_response({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        channel_id = int(request.match_info['id'])
-        channels_data['channels'] = [c for c in channels_data['channels'] if c['id'] != channel_id]
-        save_channels()
+// ============= ERROR HANDLING =============
+
+app.use((req, res) => {
+    res.status(404).json({ success: false, error: 'Route not found' });
+});
+
+app.use((err, req, res, next) => {
+    console.error("Server error:", err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+});
+
+// ============= START SERVER =============
+
+async function startServer() {
+    try {
+        // Create public directory if it doesn't exist
+        const publicDir = path.join(__dirname, 'public');
+        try {
+            await fs.access(publicDir);
+        } catch {
+            await fs.mkdir(publicDir, { recursive: true });
+            console.log('✅ Created public directory');
+        }
+
+        await loadChannelsData();
         
-        return web.json_response({'success': True})
-    except Exception as e:
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`\n🚀 IPTV Platform Server Started`);
+            console.log(`📡 Port: ${PORT}`);
+            console.log(`🌐 Health: /health`);
+            console.log(`📺 Channels: ${channelsData.channels.length}`);
+            console.log(`🔐 Admin Password: ${ADMIN_PASSWORD}`);
+            console.log(`\n✨ Server is ready!`);
+        });
+    } catch (error) {
+        console.error("Failed to start server:", error);
+        process.exit(1);
+    }
+}
 
-async def import_m3u(request):
-    """Import channels from M3U playlist"""
-    if not verify_admin(request):
-        return web.json_response({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        data = await request.json()
-        m3u_content = data.get('content', '')
-        
-        if not m3u_content:
-            return web.json_response({'success': False, 'error': 'No content provided'}, status=400)
-        
-        new_channels = parse_m3u(m3u_content)
-        channels_data['channels'].extend(new_channels)
-        save_channels()
-        
-        return web.json_response({
-            'success': True,
-            'imported': len(new_channels),
-            'total': len(channels_data['channels'])
-        })
-    except Exception as e:
-        logger.error(f"Error importing M3U: {e}")
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
+startServer();
 
-# ============= APPLICATION SETUP =============
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+    console.log('\n⏹️  Shutting down gracefully...');
+    await saveChannelsData();
+    process.exit(0);
+});
 
-async def init_app():
-    """Initialize the application"""
-    load_channels()
-    
-    app = web.Application()
-    
-    # Configure CORS
-    cors = aiohttp_cors.setup(app, defaults={
-        "*": aiohttp_cors.ResourceOptions(
-            allow_credentials=True,
-            expose_headers="*",
-            allow_headers="*",
-            allow_methods="*"
-        )
-    })
-    
-    # Public routes
-    app.router.add_get('/health', health_check)
-    app.router.add_get('/api/channels', get_channels)
-    app.router.add_get('/api/channels/{id}', get_channel)
-    app.router.add_get('/api/categories', get_categories)
-    
-    # Admin routes
-    app.router.add_post('/api/admin/login', admin_login)
-    app.router.add_post('/api/admin/channels', add_channel)
-    app.router.add_put('/api/admin/channels/{id}', update_channel)
-    app.router.add_delete('/api/admin/channels/{id}', delete_channel)
-    app.router.add_post('/api/admin/import', import_m3u)
-    
-    # Configure CORS for all routes
-    for route in list(app.router.routes()):
-        cors.add(route)
-    
-    return app
-
-def main():
-    logger.info("🚀 IPTV Streaming Platform starting...")
-    logger.info(f"📡 Server will run on port {PORT}")
-    
-    app = init_app()
-    web.run_app(app, host='0.0.0.0', port=PORT)
-
-if __name__ == '__main__':
-    main()
+process.on('SIGINT', async () => {
+    console.log('\n⏹️  Shutting down gracefully...');
+    await saveChannelsData();
+    process.exit(0);
+});
