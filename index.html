@@ -974,3 +974,64 @@
             document.getElementById('channelCategory').value = channel.category;
             document.getElementById('channelType').value = channel.type || 'm3u8';
             document.getElementById('channelDrmKey').value = channel.drm_key || '';
+            showModal('channelModal');
+        }
+
+        function resetChannelForm() {
+            document.getElementById('channelTitle').value = '';
+            document.getElementById('channelUrl').value = '';
+            document.getElementById('channelLogo').value = '';
+            document.getElementById('channelCategory').value = 'sports';
+            document.getElementById('channelType').value = 'm3u8';
+            document.getElementById('channelDrmKey').value = '';
+        }
+
+        function setViewMode(mode) {
+            viewMode = mode;
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.view === mode);
+            });
+            renderChannels();
+        }
+
+        function updateAdminUI() {
+            document.getElementById('adminBtn').classList.toggle('hidden', isAdmin);
+            document.getElementById('adminButtons').classList.toggle('hidden', !isAdmin);
+        }
+
+        function showModal(id) {
+            document.getElementById(id).classList.add('active');
+        }
+
+        function hideModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        function showLoading() {
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('channelsGrid').classList.add('hidden');
+            document.getElementById('channelsList').classList.add('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingState').classList.add('hidden');
+        }
+
+        function showEmpty() {
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('channelsGrid').classList.add('hidden');
+            document.getElementById('channelsList').classList.add('hidden');
+        }
+
+        function hideEmpty() {
+            document.getElementById('emptyState').classList.add('hidden');
+        }
+
+        // Make functions globally available
+        window.playChannel = playChannel;
+        window.editChannel = editChannel;
+        window.deleteChannel = deleteChannel;
+    </script>
+</body>
+</html>
