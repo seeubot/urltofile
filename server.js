@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -19,9 +20,8 @@ app.use(express.static('public'));
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://movie:movie@movie.tylkv.mongodb.net/movie?retryWrites=true&w=majority&appName=movie';
 
+// Connect to MongoDB (removed deprecated options)
 mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
 })
@@ -106,6 +106,7 @@ const Channel = mongoose.model('Channel', channelSchema);
 
 // Health Check Endpoints (Koyeb compatible)
 app.get('/health', (req, res) => {
+    // Always return 200 for Koyeb health checks
     res.status(200).json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -120,28 +121,13 @@ app.get('/healthz', (req, res) => {
     res.status(200).send('OK');
 });
 
-app.get('/ready', async (req, res) => {
-    try {
-        if (mongoose.connection.readyState === 1) {
-            await mongoose.connection.db.admin().ping();
-            res.status(200).json({ 
-                ready: true,
-                database: 'ready'
-            });
-        } else {
-            res.status(200).json({ 
-                ready: true,
-                database: 'connecting',
-                message: 'Application is ready, database connecting'
-            });
-        }
-    } catch (error) {
-        res.status(200).json({ 
-            ready: true,
-            database: 'unavailable',
-            message: 'Application is ready, database unavailable'
-        });
-    }
+app.get('/ready', (req, res) => {
+    // Always return 200 to pass Koyeb readiness checks
+    res.status(200).json({ 
+        ready: true,
+        database: dbConnected ? 'connected' : 'connecting',
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'connecting'
+    });
 });
 
 app.get('/live', (req, res) => {
@@ -154,19 +140,23 @@ app.get('/live', (req, res) => {
 // Root endpoint
 app.get('/', (req, res) => {
     const indexPath = path.join(__dirname, 'public', 'index.html');
-    if (require('fs').existsSync(indexPath)) {
+    console.log('Looking for index.html at:', indexPath);
+    console.log('File exists:', fs.existsSync(indexPath));
+    
+    if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
         res.status(200).json({
             message: 'Channel Manager API',
             status: 'running',
             database: dbConnected ? 'connected' : 'disconnected',
+            indexFileFound: false,
+            searchedPath: indexPath,
             endpoints: {
                 health: '/health',
                 channels: '/api/channels',
                 stats: '/api/stats'
-            },
-            deployment: 'https://static-crane-seeutech-17dd4df3.koyeb.app'
+            }
         });
     }
 });
@@ -328,7 +318,18 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Graceful shutdown
+// Start server first, then set up shutdown handlers
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`💚 Health: http://0.0.0.0:${PORT}/health`);
+    console.log(`🔍 Ready: http://0.0.0.0:${PORT}/ready`);
+    console.log(`❤️  Live: http://0.0.0.0:${PORT}/live`);
+    console.log(`📊 API: http://0.0.0.0:${PORT}/api/channels`);
+    isHealthy = true;
+});
+
+// Graceful shutdown (defined after server is created)
 const gracefulShutdown = async (signal) => {
     console.log(`\n${signal} received. Starting graceful shutdown...`);
     
@@ -356,22 +357,10 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err);
-    // Don't exit immediately in production
     console.error('Continuing to run...');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-    // Don't exit immediately in production
     console.error('Continuing to run...');
-});
-
-// Start server
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`🌐 Deployment URL: https://static-crane-seeutech-17dd4df3.koyeb.app`);
-    console.log(`📊 API: https://static-crane-seeutech-17dd4df3.koyeb.app/api/channels`);
-    console.log(`💚 Health: https://static-crane-seeutech-17dd4df3.koyeb.app/health`);
-    console.log(`🔍 Ready: https://static-crane-seeutech-17dd4df3.koyeb.app/ready`);
-    console.log(`❤️  Live: https://static-crane-seeutech-17dd4df3.koyeb.app/live`);
 });
