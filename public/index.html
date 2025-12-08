@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Channel Manager</title>
+    <title>Streaming Channel Manager</title>
     <style>
         * {
             margin: 0;
@@ -12,7 +12,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
@@ -24,234 +24,290 @@
         }
 
         .header {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
             text-align: center;
+            color: white;
+            margin-bottom: 30px;
         }
 
-        h1 {
-            color: #667eea;
-            font-size: 2.5em;
+        .header h1 {
+            font-size: 2.5rem;
             margin-bottom: 10px;
         }
 
-        .status {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 15px;
+            background: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
             font-weight: 600;
-            margin-top: 10px;
-        }
-
-        .status.connected {
-            background: #10b981;
-            color: white;
-        }
-
-        .status.disconnected {
-            background: #ef4444;
-            color: white;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-
-        .stat-number {
-            font-size: 3em;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 10px;
-        }
-
-        .stat-label {
-            color: #6b7280;
-            font-size: 0.9em;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .channels-section {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-        }
-
-        .add-channel-form {
-            display: grid;
-            gap: 15px;
-            margin-bottom: 30px;
-            padding-bottom: 30px;
-            border-bottom: 2px solid #f3f4f6;
-        }
-
-        input, select, button {
-            padding: 12px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 14px;
             transition: all 0.3s;
         }
 
-        input:focus, select:focus {
+        .tab-btn.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border 0.3s;
+        }
+
+        input:focus, textarea:focus, select:focus {
             outline: none;
             border-color: #667eea;
         }
 
-        button {
-            background: #667eea;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+            font-family: monospace;
         }
 
-        button:hover {
-            background: #5568d3;
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.show {
+            display: block;
         }
 
         .channels-list {
             display: grid;
             gap: 15px;
+            max-height: 600px;
+            overflow-y: auto;
         }
 
-        .channel-item {
-            padding: 20px;
-            background: #f9fafb;
-            border-radius: 10px;
-            border-left: 4px solid #667eea;
+        .channel-card {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            transition: all 0.3s;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            gap: 15px;
         }
 
-        .channel-item:hover {
-            transform: translateX(5px);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        .channel-logo {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 8px;
         }
 
-        .channel-info h3 {
-            color: #1f2937;
+        .channel-info {
+            flex: 1;
+        }
+
+        .channel-name {
+            font-weight: 600;
+            font-size: 1.1rem;
             margin-bottom: 5px;
         }
 
-        .channel-meta {
-            color: #6b7280;
-            font-size: 0.9em;
+        .channel-group {
+            color: #666;
+            font-size: 0.9rem;
         }
 
-        .channel-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn-small {
+        .delete-btn {
             padding: 8px 16px;
-            font-size: 12px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
         }
 
-        .btn-danger {
-            background: #ef4444;
-        }
-
-        .btn-danger:hover {
-            background: #dc2626;
+        .delete-btn:hover {
+            background: #c82333;
         }
 
         .loading {
             text-align: center;
-            padding: 40px;
-            color: #6b7280;
+            padding: 20px;
+            color: #666;
         }
 
-        .error {
-            background: #fee2e2;
-            color: #991b1b;
-            padding: 15px;
-            border-radius: 8px;
+        .api-url-input {
+            display: flex;
+            gap: 10px;
             margin-bottom: 20px;
         }
 
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 1.8em;
-            }
+        .api-url-input input {
+            flex: 1;
+        }
 
-            .channel-item {
-                flex-direction: column;
-                gap: 15px;
-                align-items: flex-start;
-            }
+        .api-url-input button {
+            width: auto;
+            padding: 12px 24px;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📺 Channel Manager</h1>
-            <p>Manage your streaming channels</p>
-            <div class="status" id="dbStatus">Checking...</div>
+            <h1>📡 Streaming Channel Manager</h1>
+            <p>Manage your streaming channels with ease</p>
         </div>
 
-        <div class="stats-grid" id="statsGrid">
-            <div class="stat-card">
-                <div class="stat-number" id="totalChannels">-</div>
-                <div class="stat-label">Total Channels</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="activeChannels">-</div>
-                <div class="stat-label">Active</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="inactiveChannels">-</div>
-                <div class="stat-label">Inactive</div>
-            </div>
+        <div class="api-url-input">
+            <input type="text" id="apiUrl" placeholder="Enter API URL (e.g., https://your-app.koyeb.app)" value="http://localhost:3000">
+            <button class="btn" onclick="saveApiUrl()">Save URL</button>
         </div>
 
-        <div class="channels-section">
-            <h2 style="margin-bottom: 20px;">Add New Channel</h2>
-            <form class="add-channel-form" id="addChannelForm">
-                <input type="text" id="channelName" placeholder="Channel Name" required>
-                <input type="url" id="channelUrl" placeholder="Stream URL" required>
-                <select id="channelCategory">
-                    <option value="Movie">Movie</option>
-                    <option value="TV">TV</option>
-                    <option value="Sports">Sports</option>
-                    <option value="News">News</option>
-                    <option value="Entertainment">Entertainment</option>
-                    <option value="Other">Other</option>
-                </select>
-                <select id="channelQuality">
-                    <option value="SD">SD</option>
-                    <option value="HD" selected>HD</option>
-                    <option value="FHD">FHD</option>
-                    <option value="4K">4K</option>
-                </select>
-                <button type="submit">Add Channel</button>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('add')">Add Channel</button>
+            <button class="tab-btn" onclick="switchTab('bulk')">Bulk Import</button>
+            <button class="tab-btn" onclick="switchTab('list')">View Channels</button>
+        </div>
+
+        <div id="add-tab" class="tab-content active">
+            <h2 style="margin-bottom: 20px;">Add Single Channel</h2>
+            <div id="add-alert" class="alert"></div>
+            
+            <form id="addChannelForm">
+                <div class="form-group">
+                    <label for="tvgId">Channel ID *</label>
+                    <input type="text" id="tvgId" required placeholder="e.g., 1005">
+                </div>
+
+                <div class="form-group">
+                    <label for="name">Channel Name *</label>
+                    <input type="text" id="name" required placeholder="e.g., Hungama">
+                </div>
+
+                <div class="form-group">
+                    <label for="groupTitle">Group Title *</label>
+                    <input type="text" id="groupTitle" required placeholder="e.g., Jiostar">
+                </div>
+
+                <div class="form-group">
+                    <label for="logo">Logo URL *</label>
+                    <input type="url" id="logo" required placeholder="https://...">
+                </div>
+
+                <div class="form-group">
+                    <label for="streamUrl">Stream URL *</label>
+                    <input type="url" id="streamUrl" required placeholder="https://...">
+                </div>
+
+                <div class="form-group">
+                    <label for="licenseType">License Type</label>
+                    <input type="text" id="licenseType" placeholder="clearkey">
+                </div>
+
+                <div class="form-group">
+                    <label for="licenseKey">License Key</label>
+                    <input type="text" id="licenseKey" placeholder="key1:key2">
+                </div>
+
+                <div class="form-group">
+                    <label for="cookie">Cookie</label>
+                    <textarea id="cookie" placeholder="Optional cookie data"></textarea>
+                </div>
+
+                <button type="submit" class="btn">Add Channel</button>
             </form>
+        </div>
 
-            <h2 style="margin-bottom: 20px;">Channels</h2>
+        <div id="bulk-tab" class="tab-content">
+            <h2 style="margin-bottom: 20px;">Bulk Import (M3U Format)</h2>
+            <div id="bulk-alert" class="alert"></div>
+            
+            <form id="bulkImportForm">
+                <div class="form-group">
+                    <label for="m3uContent">Paste M3U Content</label>
+                    <textarea id="m3uContent" rows="15" placeholder="Paste your M3U playlist here..."></textarea>
+                </div>
+
+                <button type="submit" class="btn">Import Channels</button>
+            </form>
+        </div>
+
+        <div id="list-tab" class="tab-content">
+            <h2 style="margin-bottom: 20px;">All Channels</h2>
+            <div id="list-alert" class="alert"></div>
+            
+            <div class="form-group">
+                <input type="text" id="searchInput" placeholder="Search channels..." onkeyup="filterChannels()">
+            </div>
+
             <div id="channelsList" class="channels-list">
                 <div class="loading">Loading channels...</div>
             </div>
@@ -259,154 +315,176 @@
     </div>
 
     <script>
-        const API_URL = window.location.origin + '/api';
+        let API_URL = localStorage.getItem('apiUrl') || 'http://localhost:3000';
+        document.getElementById('apiUrl').value = API_URL;
 
-        async function fetchStats() {
-            try {
-                const response = await fetch(`${API_URL}/stats`);
-                const data = await response.json();
-                
-                document.getElementById('totalChannels').textContent = data.totalChannels || 0;
-                document.getElementById('activeChannels').textContent = data.activeChannels || 0;
-                document.getElementById('inactiveChannels').textContent = data.inactiveChannels || 0;
-            } catch (error) {
-                console.error('Error fetching stats:', error);
+        function saveApiUrl() {
+            const url = document.getElementById('apiUrl').value.trim();
+            if (url) {
+                API_URL = url.replace(/\/$/, ''); // Remove trailing slash
+                localStorage.setItem('apiUrl', API_URL);
+                showAlert('add', 'API URL saved successfully!', 'success');
             }
         }
 
-        async function fetchChannels() {
-            try {
-                const response = await fetch(`${API_URL}/channels`);
-                const channels = await response.json();
-                
-                const channelsList = document.getElementById('channelsList');
-                
-                if (channels.length === 0) {
-                    channelsList.innerHTML = '<div class="loading">No channels yet. Add your first channel above!</div>';
-                    return;
-                }
-                
-                channelsList.innerHTML = channels.map(channel => `
-                    <div class="channel-item">
-                        <div class="channel-info">
-                            <h3>${channel.name}</h3>
-                            <div class="channel-meta">
-                                ${channel.category} • ${channel.quality} • ${channel.language}
-                            </div>
-                        </div>
-                        <div class="channel-actions">
-                            <button class="btn-small" onclick="testChannel('${channel._id}')">Test</button>
-                            <button class="btn-small btn-danger" onclick="deleteChannel('${channel._id}')">Delete</button>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (error) {
-                console.error('Error fetching channels:', error);
-                document.getElementById('channelsList').innerHTML = 
-                    '<div class="error">Error loading channels. Please refresh the page.</div>';
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tab}-tab`).classList.add('active');
+
+            // Load channels if switching to list tab
+            if (tab === 'list') {
+                loadChannels();
             }
         }
 
-        async function checkHealth() {
-            try {
-                const response = await fetch(`${API_URL.replace('/api', '')}/health`);
-                const health = await response.json();
-                
-                const statusEl = document.getElementById('dbStatus');
-                if (health.database === 'connected') {
-                    statusEl.textContent = '🟢 Database Connected';
-                    statusEl.className = 'status connected';
-                } else {
-                    statusEl.textContent = '🔴 Database Disconnected';
-                    statusEl.className = 'status disconnected';
-                }
-            } catch (error) {
-                const statusEl = document.getElementById('dbStatus');
-                statusEl.textContent = '🔴 Server Error';
-                statusEl.className = 'status disconnected';
-            }
+        function showAlert(tab, message, type) {
+            const alert = document.getElementById(`${tab}-alert`);
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+            setTimeout(() => alert.classList.remove('show'), 5000);
         }
 
+        // Add single channel
         document.getElementById('addChannelForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const channelData = {
-                name: document.getElementById('channelName').value,
-                url: document.getElementById('channelUrl').value,
-                category: document.getElementById('channelCategory').value,
-                quality: document.getElementById('channelQuality').value
+                tvgId: document.getElementById('tvgId').value,
+                name: document.getElementById('name').value,
+                groupTitle: document.getElementById('groupTitle').value,
+                logo: document.getElementById('logo').value,
+                streamUrl: document.getElementById('streamUrl').value,
+                licenseType: document.getElementById('licenseType').value || 'clearkey',
+                licenseKey: document.getElementById('licenseKey').value,
+                cookie: document.getElementById('cookie').value
             };
-            
+
             try {
-                const response = await fetch(`${API_URL}/channels`, {
+                const response = await fetch(`${API_URL}/api/channels`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(channelData)
                 });
-                
-                if (response.ok) {
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('add', 'Channel added successfully!', 'success');
                     document.getElementById('addChannelForm').reset();
-                    fetchChannels();
-                    fetchStats();
                 } else {
-                    alert('Error adding channel');
+                    showAlert('add', result.message || 'Failed to add channel', 'error');
                 }
             } catch (error) {
-                console.error('Error:', error);
-                alert('Error adding channel');
+                showAlert('add', 'Error: ' + error.message, 'error');
             }
         });
 
+        // Bulk import
+        document.getElementById('bulkImportForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const m3uContent = document.getElementById('m3uContent').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/channels/bulk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ m3uContent })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('bulk', 
+                        `Import completed! Added: ${result.results.added}, Skipped: ${result.results.skipped}, Errors: ${result.results.errors}`, 
+                        'success'
+                    );
+                    document.getElementById('m3uContent').value = '';
+                } else {
+                    showAlert('bulk', result.message || 'Failed to import channels', 'error');
+                }
+            } catch (error) {
+                showAlert('bulk', 'Error: ' + error.message, 'error');
+            }
+        });
+
+        // Load and display channels
+        let allChannels = [];
+
+        async function loadChannels() {
+            const listDiv = document.getElementById('channelsList');
+            listDiv.innerHTML = '<div class="loading">Loading channels...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/channels`);
+                const result = await response.json();
+
+                if (result.success) {
+                    allChannels = result.data;
+                    displayChannels(allChannels);
+                } else {
+                    listDiv.innerHTML = '<div class="loading">Failed to load channels</div>';
+                }
+            } catch (error) {
+                listDiv.innerHTML = '<div class="loading">Error: ' + error.message + '</div>';
+            }
+        }
+
+        function displayChannels(channels) {
+            const listDiv = document.getElementById('channelsList');
+            
+            if (channels.length === 0) {
+                listDiv.innerHTML = '<div class="loading">No channels found</div>';
+                return;
+            }
+
+            listDiv.innerHTML = channels.map(channel => `
+                <div class="channel-card">
+                    <img src="${channel.logo}" alt="${channel.name}" class="channel-logo" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2260%22%3E%3Crect fill=%22%23ddd%22 width=%2260%22 height=%2260%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22 font-size=%2220%22%3E?%3C/text%3E%3C/svg%3E'">
+                    <div class="channel-info">
+                        <div class="channel-name">${channel.name}</div>
+                        <div class="channel-group">${channel.groupTitle} • ID: ${channel.tvgId}</div>
+                    </div>
+                    <button class="delete-btn" onclick="deleteChannel('${channel._id}')">Delete</button>
+                </div>
+            `).join('');
+        }
+
+        function filterChannels() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allChannels.filter(channel => 
+                channel.name.toLowerCase().includes(search) ||
+                channel.groupTitle.toLowerCase().includes(search) ||
+                channel.tvgId.toLowerCase().includes(search)
+            );
+            displayChannels(filtered);
+        }
+
         async function deleteChannel(id) {
             if (!confirm('Are you sure you want to delete this channel?')) return;
-            
+
             try {
-                const response = await fetch(`${API_URL}/channels/${id}`, {
+                const response = await fetch(`${API_URL}/api/channels/${id}`, {
                     method: 'DELETE'
                 });
-                
-                if (response.ok) {
-                    fetchChannels();
-                    fetchStats();
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('list', 'Channel deleted successfully!', 'success');
+                    loadChannels();
                 } else {
-                    alert('Error deleting channel');
+                    showAlert('list', result.message || 'Failed to delete channel', 'error');
                 }
             } catch (error) {
-                console.error('Error:', error);
-                alert('Error deleting channel');
+                showAlert('list', 'Error: ' + error.message, 'error');
             }
         }
-
-        async function testChannel(id) {
-            try {
-                const response = await fetch(`${API_URL}/channels/${id}/test`, {
-                    method: 'POST'
-                });
-                
-                if (response.ok) {
-                    alert('Channel test recorded!');
-                    fetchChannels();
-                } else {
-                    alert('Error testing channel');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error testing channel');
-            }
-        }
-
-        // Initialize
-        checkHealth();
-        fetchStats();
-        fetchChannels();
-        
-        // Refresh every 30 seconds
-        setInterval(() => {
-            checkHealth();
-            fetchStats();
-        }, 30000);
     </script>
 </body>
 </html>
