@@ -227,7 +227,7 @@
         </div>
 
         <div class="api-url-input">
-            <input type="text" id="apiUrl" placeholder="Enter API URL (e.g., https://your-app.koyeb.app)" value="http://localhost:3000">
+            <input type="text" id="apiUrl" placeholder="Enter API URL (e.g., https://your-app.koyeb.app)" value="https://static-crane-seeutech-17dd4df3.koyeb.app">
             <button class="btn" onclick="saveApiUrl()">Save URL</button>
         </div>
 
@@ -315,7 +315,7 @@
     </div>
 
     <script>
-        let API_URL = localStorage.getItem('apiUrl') || 'http://localhost:3000';
+        let API_URL = localStorage.getItem('apiUrl') || 'https://static-crane-seeutech-17dd4df3.koyeb.app';
         document.getElementById('apiUrl').value = API_URL;
 
         function saveApiUrl() {
