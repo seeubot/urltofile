@@ -1,4 +1,5 @@
-// Update the server code to handle the new fields
+// Complete Secure IPTV Channel Manager API
+// Simplified schema with security features
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -17,40 +18,18 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Enhanced Channel Schema with all fields from the image
+// ===================================
+// SIMPLIFIED CHANNEL SCHEMA
+// ===================================
 const channelSchema = new mongoose.Schema({
-  // Basic info
-  tvgId: { type: String, required: true },
-  name: { type: String, required: true },
-  groupTitle: { type: String, required: true },
-  logo: { type: String, default: '' },
-  
-  // Multiple streaming URLs with IDs
-  streamUrls: { 
-    type: Map,
-    of: String,
-    default: {}
-  },
-  
-  // DRM Configuration (from image)
-  licenseType: { 
-    type: String, 
-    enum: ['clearkey', 'widevine', 'playready', ''], 
-    default: 'clearkey' 
-  },
-  licenseKey: { type: String, default: '' },
-  scheme: { type: String, default: '' }, // From edit_scheme in image
-  
-  // HTTP headers and metadata (from image)
-  useragent: { type: String, default: '' }, // From edit_useragent in image
-  title: { type: String, default: '' }, // From edit_title in image
-  url: { type: String, default: '' }, // From edit_url in image
-  referer: { type: String, default: '' }, // From edit_referer in image
-  origin: { type: String, default: '' }, // From edit_origin in image
-  cookie: { type: String, default: '' }, // From edit_cookie in image
-  key: { type: String, default: '' }, // From edit_key in image
-  
-  // Additional metadata
+  title: { type: String, required: true }, // Channel name
+  url: { type: String, required: true }, // Streaming URL
+  cookie: { type: String, default: '' }, // Cookie for authentication
+  key: { type: String, default: '' }, // DRM clearkey
+  logo: { type: String, default: '' }, // Channel logo
+  licenseType: { type: String, default: 'clearkey' }, // Always clearkey
+  groupTitle: { type: String, default: 'General' }, // Category
+  tvgId: { type: String, required: true, unique: true }, // Unique identifier
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -59,26 +38,87 @@ const channelSchema = new mongoose.Schema({
 });
 
 // Add indexes for faster queries
-channelSchema.index({ tvgId: 1, name: 1, groupTitle: 1 });
+channelSchema.index({ title: 1, groupTitle: 1, tvgId: 1 });
 
 const Channel = mongoose.model('Channel', channelSchema);
 
-// Middleware
+// ===================================
+// MIDDLEWARE
+// ===================================
 app.use(helmet({
-  contentSecurityPolicy: false, // Disable for development
+  contentSecurityPolicy: false,
 }));
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Serve static files from public directory
 app.use(express.static('public'));
 
-// Request logging middleware
+// Request logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
+
+// ===================================
+// SECURITY FUNCTIONS
+// ===================================
+
+// Sanitize channel data based on access level
+function sanitizeChannel(channel, includeSecure = false) {
+  const channelObj = channel.toObject ? channel.toObject() : channel;
+  
+  if (!includeSecure) {
+    // PUBLIC API - Hide sensitive data
+    return {
+      _id: channelObj._id,
+      title: channelObj.title,
+      logo: channelObj.logo,
+      groupTitle: channelObj.groupTitle,
+      tvgId: channelObj.tvgId,
+      isActive: channelObj.isActive,
+      licenseType: channelObj.licenseType,
+      // Indicators only (no actual data)
+      hasUrl: !!channelObj.url,
+      hasCookie: !!channelObj.cookie,
+      hasKey: !!channelObj.key,
+      createdAt: channelObj.createdAt,
+      updatedAt: channelObj.updatedAt
+    };
+  }
+  
+  // SECURE API - Return full data
+  return {
+    _id: channelObj._id,
+    title: channelObj.title,
+    url: channelObj.url,
+    cookie: channelObj.cookie,
+    key: channelObj.key,
+    logo: channelObj.logo,
+    licenseType: channelObj.licenseType,
+    groupTitle: channelObj.groupTitle,
+    tvgId: channelObj.tvgId,
+    isActive: channelObj.isActive,
+    createdAt: channelObj.createdAt,
+    updatedAt: channelObj.updatedAt
+  };
+}
+
+// Check for secure access token
+function checkSecureAccess(req, res, next) {
+  const token = req.headers['x-api-key'] || req.query.apikey;
+  const validToken = process.env.API_KEY || 'your-secure-api-key-change-this'; 
+  
+  if (token === validToken) {
+    req.secureAccess = true;
+  } else {
+    req.secureAccess = false;
+  }
+  next();
+}
+
+// ===================================
+// BASIC ROUTES
+// ===================================
 
 // Serve frontend
 app.get('/', (req, res) => {
@@ -91,42 +131,43 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     uptime: process.uptime(),
-    api: 'IPTV Channel Manager API'
+    timestamp: new Date().toISOString(),
+    api: 'Secure IPTV Channel Manager API v2.0'
   });
 });
 
-// Get all channels with filtering
-app.get('/api/channels', async (req, res) => {
+// ===================================
+// CHANNEL CRUD ENDPOINTS
+// ===================================
+
+// Get all channels (PUBLIC - sanitized OR SECURE - full data)
+app.get('/api/channels', checkSecureAccess, async (req, res) => {
   try {
-    const { groupTitle, active, search, licenseType } = req.query;
+    const { groupTitle, active, search } = req.query;
     let query = {};
 
+    // Build query filters
     if (groupTitle) query.groupTitle = groupTitle;
     if (active !== undefined) query.isActive = active === 'true';
-    if (licenseType) query.licenseType = licenseType;
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
+        { title: { $regex: search, $options: 'i' } },
         { tvgId: { $regex: search, $options: 'i' } },
         { groupTitle: { $regex: search, $options: 'i' } }
       ];
     }
 
-    const channels = await Channel.find(query).sort({ name: 1 });
+    const channels = await Channel.find(query).sort({ title: 1 });
     
-    // Convert Map to Object for JSON response
-    const channelsWithObjects = channels.map(channel => {
-      const channelObj = channel.toObject();
-      if (channelObj.streamUrls && channelObj.streamUrls instanceof Map) {
-        channelObj.streamUrls = Object.fromEntries(channelObj.streamUrls);
-      }
-      return channelObj;
-    });
+    // Sanitize data based on access level
+    const sanitized = channels.map(ch => sanitizeChannel(ch, req.secureAccess));
 
     res.json({ 
       success: true, 
       count: channels.length,
-      data: channelsWithObjects 
+      secure: req.secureAccess,
+      message: req.secureAccess ? 'Full data returned' : 'Public data only (use API key for full access)',
+      data: sanitized
     });
   } catch (error) {
     console.error('Error fetching channels:', error);
@@ -138,8 +179,8 @@ app.get('/api/channels', async (req, res) => {
   }
 });
 
-// Get channel by ID
-app.get('/api/channels/:id', async (req, res) => {
+// Get single channel by ID (PUBLIC - sanitized OR SECURE - full data)
+app.get('/api/channels/:id', checkSecureAccess, async (req, res) => {
   try {
     const channel = await Channel.findById(req.params.id);
     if (!channel) {
@@ -149,13 +190,13 @@ app.get('/api/channels/:id', async (req, res) => {
       });
     }
     
-    // Convert Map to Object
-    const channelObj = channel.toObject();
-    if (channelObj.streamUrls && channelObj.streamUrls instanceof Map) {
-      channelObj.streamUrls = Object.fromEntries(channelObj.streamUrls);
-    }
+    const sanitized = sanitizeChannel(channel, req.secureAccess);
     
-    res.json({ success: true, data: channelObj });
+    res.json({ 
+      success: true, 
+      secure: req.secureAccess,
+      data: sanitized 
+    });
   } catch (error) {
     console.error('Error fetching channel:', error);
     res.status(500).json({ 
@@ -169,34 +210,21 @@ app.get('/api/channels/:id', async (req, res) => {
 // Add new channel
 app.post('/api/channels', async (req, res) => {
   try {
-    const channelData = req.body;
+    const { title, url, cookie, key, logo, groupTitle, tvgId } = req.body;
 
     // Validate required fields
-    if (!channelData.tvgId || !channelData.name || !channelData.groupTitle) {
+    if (!title || !url) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Missing required fields: tvgId, name, groupTitle' 
+        message: 'Missing required fields: title and url are mandatory' 
       });
     }
 
-    // Validate at least one stream URL
-    if (!channelData.streamUrls || Object.keys(channelData.streamUrls).length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'At least one stream URL is required' 
-      });
-    }
-
-    // Validate license type
-    if (channelData.licenseType && !['clearkey', 'widevine', 'playready', ''].includes(channelData.licenseType)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid license type. Must be: clearkey, widevine, playready, or empty' 
-      });
-    }
+    // Generate tvgId if not provided
+    const finalTvgId = tvgId || `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // Check if channel already exists
-    const existing = await Channel.findOne({ tvgId: channelData.tvgId });
+    const existing = await Channel.findOne({ tvgId: finalTvgId });
     if (existing) {
       return res.status(409).json({ 
         success: false, 
@@ -204,24 +232,24 @@ app.post('/api/channels', async (req, res) => {
       });
     }
 
-    // Convert streamUrls object to Map
-    if (channelData.streamUrls && typeof channelData.streamUrls === 'object') {
-      channelData.streamUrls = new Map(Object.entries(channelData.streamUrls));
-    }
+    const channelData = {
+      title,
+      url,
+      cookie: cookie || '',
+      key: key || '',
+      logo: logo || '',
+      licenseType: 'clearkey', // Always clearkey by default
+      groupTitle: groupTitle || 'General',
+      tvgId: finalTvgId
+    };
 
     const channel = new Channel(channelData);
     await channel.save();
 
-    // Convert back to object for response
-    const channelObj = channel.toObject();
-    if (channelObj.streamUrls instanceof Map) {
-      channelObj.streamUrls = Object.fromEntries(channelObj.streamUrls);
-    }
-
     res.status(201).json({ 
       success: true, 
       message: 'Channel added successfully', 
-      data: channelObj 
+      data: sanitizeChannel(channel, true)
     });
   } catch (error) {
     console.error('Error adding channel:', error);
@@ -237,13 +265,12 @@ app.post('/api/channels', async (req, res) => {
 app.put('/api/channels/:id', async (req, res) => {
   try {
     const updates = req.body;
-    
-    // Convert streamUrls object to Map if present
-    if (updates.streamUrls && typeof updates.streamUrls === 'object') {
-      updates.streamUrls = new Map(Object.entries(updates.streamUrls));
-    }
-    
     updates.updatedAt = Date.now();
+
+    // Always keep clearkey as license type
+    if (updates.licenseType) {
+      updates.licenseType = 'clearkey';
+    }
 
     const channel = await Channel.findByIdAndUpdate(
       req.params.id,
@@ -258,16 +285,10 @@ app.put('/api/channels/:id', async (req, res) => {
       });
     }
 
-    // Convert Map to Object for response
-    const channelObj = channel.toObject();
-    if (channelObj.streamUrls instanceof Map) {
-      channelObj.streamUrls = Object.fromEntries(channelObj.streamUrls);
-    }
-
     res.json({ 
       success: true, 
       message: 'Channel updated successfully', 
-      data: channelObj 
+      data: sanitizeChannel(channel, true)
     });
   } catch (error) {
     console.error('Error updating channel:', error);
@@ -293,7 +314,8 @@ app.delete('/api/channels/:id', async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: 'Channel deleted successfully' 
+      message: 'Channel deleted successfully',
+      deletedChannel: channel.title
     });
   } catch (error) {
     console.error('Error deleting channel:', error);
@@ -305,12 +327,63 @@ app.delete('/api/channels/:id', async (req, res) => {
   }
 });
 
+// ===================================
+// SECURE ENDPOINT (Requires API Key)
+// ===================================
+
+// Get full channel data with API key
+app.get('/api/secure/channels', checkSecureAccess, async (req, res) => {
+  try {
+    if (!req.secureAccess) {
+      return res.status(401).json({
+        success: false,
+        message: 'API key required. Add x-api-key header or ?apikey= query parameter'
+      });
+    }
+
+    const { groupTitle, active, search } = req.query;
+    let query = {};
+
+    if (groupTitle) query.groupTitle = groupTitle;
+    if (active !== undefined) query.isActive = active === 'true';
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { tvgId: { $regex: search, $options: 'i' } },
+        { groupTitle: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const channels = await Channel.find(query).sort({ title: 1 });
+    const fullData = channels.map(ch => sanitizeChannel(ch, true));
+
+    res.json({ 
+      success: true, 
+      count: channels.length,
+      secure: true,
+      data: fullData
+    });
+  } catch (error) {
+    console.error('Error fetching secure channels:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching channels', 
+      error: error.message 
+    });
+  }
+});
+
+// ===================================
+// UTILITY ENDPOINTS
+// ===================================
+
 // Get unique group titles
 app.get('/api/groups', async (req, res) => {
   try {
     const groups = await Channel.distinct('groupTitle');
     res.json({ 
       success: true, 
+      count: groups.length,
       data: groups.sort() 
     });
   } catch (error) {
@@ -323,58 +396,69 @@ app.get('/api/groups', async (req, res) => {
   }
 });
 
-// Generate M3U playlist with enhanced support for multiple URLs and DRM
+// Get statistics
+app.get('/api/stats', async (req, res) => {
+  try {
+    const total = await Channel.countDocuments();
+    const active = await Channel.countDocuments({ isActive: true });
+    const groups = await Channel.distinct('groupTitle');
+    const withDRM = await Channel.countDocuments({ key: { $ne: '' } });
+
+    res.json({
+      success: true,
+      data: {
+        totalChannels: total,
+        activeChannels: active,
+        inactiveChannels: total - active,
+        totalGroups: groups.length,
+        channelsWithDRM: withDRM,
+        groups: groups.sort()
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching statistics', 
+      error: error.message 
+    });
+  }
+});
+
+// ===================================
+// M3U PLAYLIST GENERATION
+// ===================================
+
+// Generate M3U playlist with full data
 app.get('/api/playlist.m3u', async (req, res) => {
   try {
-    const { groupTitle, quality } = req.query;
+    const { groupTitle } = req.query;
     let query = { isActive: true };
     if (groupTitle) query.groupTitle = groupTitle;
 
-    const channels = await Channel.find(query).sort({ name: 1 });
+    const channels = await Channel.find(query).sort({ title: 1 });
     
     let m3u = '#EXTM3U x-tvg-url=""\n';
     
     for (const channel of channels) {
-      const streamUrls = channel.streamUrls ? Object.fromEntries(channel.streamUrls) : {};
-      const primaryUrl = streamUrls.primary || streamUrls['1080p'] || streamUrls['720p'] || 
-                        Object.values(streamUrls)[0] || '';
-      
-      if (!primaryUrl) continue;
+      if (!channel.url) continue;
 
-      m3u += `#EXTINF:-1 tvg-id="${channel.tvgId}" group-title="${channel.groupTitle}" tvg-logo="${channel.logo}",${channel.name}\n`;
+      // Add channel info line
+      m3u += `#EXTINF:-1 tvg-id="${channel.tvgId}" group-title="${channel.groupTitle}" tvg-logo="${channel.logo}",${channel.title}\n`;
       
-      // Add DRM properties if available
-      if (channel.licenseType && channel.licenseKey) {
-        m3u += `#KODIPROP:inputstream.adaptive.license_type=${channel.licenseType}\n`;
-        m3u += `#KODIPROP:inputstream.adaptive.license_key=${channel.licenseKey}\n`;
-        
-        // Add scheme if specified
-        if (channel.scheme) {
-          m3u += `#KODIPROP:inputstream.adaptive.license_scheme=${channel.scheme}\n`;
-        }
+      // Add DRM properties if key exists
+      if (channel.key) {
+        m3u += `#KODIPROP:inputstream.adaptive.license_type=clearkey\n`;
+        m3u += `#KODIPROP:inputstream.adaptive.license_key=${channel.key}\n`;
       }
       
-      // Add HTTP headers
-      if (channel.useragent) {
-        m3u += `#EXTHTTP:{"User-Agent":"${channel.useragent}"}\n`;
-      }
-      if (channel.referer) {
-        m3u += `#EXTHTTP:{"Referer":"${channel.referer}"}\n`;
-      }
-      if (channel.origin) {
-        m3u += `#EXTHTTP:{"Origin":"${channel.origin}"}\n`;
-      }
+      // Add cookie as HTTP header if exists
       if (channel.cookie) {
-        m3u += `#EXTHTTP:{"Cookie":"${channel.cookie}"}\n`;
-      }
-      if (channel.title) {
-        m3u += `#KODIPROP:license_title="${channel.title}"\n`;
-      }
-      if (channel.url) {
-        m3u += `#KODIPROP:license_url="${channel.url}"\n`;
+        m3u += `#EXTHTTP:{"cookie":"${channel.cookie}"}\n`;
       }
       
-      m3u += `${primaryUrl}\n\n`;
+      // Add stream URL
+      m3u += `${channel.url}\n\n`;
     }
 
     res.setHeader('Content-Type', 'audio/x-mpegurl');
@@ -390,44 +474,10 @@ app.get('/api/playlist.m3u', async (req, res) => {
   }
 });
 
-// Get channel stream by quality
-app.get('/api/channels/:id/stream/:quality', async (req, res) => {
-  try {
-    const channel = await Channel.findById(req.params.id);
-    if (!channel) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Channel not found' 
-      });
-    }
+// ===================================
+// BULK IMPORT FROM M3U
+// ===================================
 
-    const streamUrls = channel.streamUrls ? Object.fromEntries(channel.streamUrls) : {};
-    const streamUrl = streamUrls[req.params.quality];
-    
-    if (!streamUrl) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Stream quality not found' 
-      });
-    }
-
-    res.json({ 
-      success: true, 
-      quality: req.params.quality,
-      url: streamUrl,
-      channel: channel.name
-    });
-  } catch (error) {
-    console.error('Error fetching stream:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching stream', 
-      error: error.message 
-    });
-  }
-});
-
-// Bulk import from M3U
 app.post('/api/channels/bulk', async (req, res) => {
   try {
     const { m3uContent } = req.body;
@@ -439,28 +489,51 @@ app.post('/api/channels/bulk', async (req, res) => {
       });
     }
 
-    const channels = parseEnhancedM3U(m3uContent);
-    const results = { added: 0, skipped: 0, errors: 0, total: channels.length };
+    const channels = parseSimplifiedM3U(m3uContent);
+    const results = { 
+      added: 0, 
+      updated: 0,
+      skipped: 0, 
+      errors: 0, 
+      total: channels.length,
+      details: []
+    };
 
     for (const channelData of channels) {
       try {
         const existing = await Channel.findOne({ tvgId: channelData.tvgId });
+        
         if (existing) {
-          results.skipped++;
-          continue;
+          // Update existing channel
+          await Channel.findByIdAndUpdate(existing._id, {
+            ...channelData,
+            updatedAt: Date.now()
+          });
+          results.updated++;
+          results.details.push({ 
+            status: 'updated', 
+            title: channelData.title,
+            tvgId: channelData.tvgId 
+          });
+        } else {
+          // Add new channel
+          const channel = new Channel(channelData);
+          await channel.save();
+          results.added++;
+          results.details.push({ 
+            status: 'added', 
+            title: channelData.title,
+            tvgId: channelData.tvgId 
+          });
         }
-
-        // Convert streamUrls to Map
-        if (channelData.streamUrls && typeof channelData.streamUrls === 'object') {
-          channelData.streamUrls = new Map(Object.entries(channelData.streamUrls));
-        }
-
-        const channel = new Channel(channelData);
-        await channel.save();
-        results.added++;
       } catch (error) {
-        console.error(`Error adding channel ${channelData.name || channelData.tvgId}:`, error);
+        console.error(`Error processing channel ${channelData.title}:`, error);
         results.errors++;
+        results.details.push({ 
+          status: 'error', 
+          title: channelData.title,
+          error: error.message 
+        });
       }
     }
 
@@ -479,8 +552,11 @@ app.post('/api/channels/bulk', async (req, res) => {
   }
 });
 
-// Enhanced M3U parser
-function parseEnhancedM3U(content) {
+// ===================================
+// M3U PARSER (Simplified)
+// ===================================
+
+function parseSimplifiedM3U(content) {
   const lines = content.split('\n').map(line => line.trim());
   const channels = [];
   let currentChannel = {};
@@ -496,39 +572,44 @@ function parseEnhancedM3U(content) {
       const nameMatch = line.match(/,(.+)$/);
       
       currentChannel = {
-        tvgId: tvgIdMatch ? tvgIdMatch[1] : `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        groupTitle: groupMatch ? groupMatch[1] : 'Uncategorized',
+        title: nameMatch ? nameMatch[1].trim() : 'Unknown Channel',
+        tvgId: tvgIdMatch && tvgIdMatch[1] ? tvgIdMatch[1] : `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        groupTitle: groupMatch ? groupMatch[1] : 'General',
         logo: logoMatch ? logoMatch[1] : '',
-        name: nameMatch ? nameMatch[1].trim() : 'Unknown Channel',
-        streamUrls: {}
+        licenseType: 'clearkey',
+        key: '',
+        cookie: '',
+        url: ''
       };
-    } else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_type=')) {
-      currentChannel.licenseType = line.split('=')[1];
-    } else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
-      currentChannel.licenseKey = line.split('=')[1];
-    } else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_scheme=')) {
-      currentChannel.scheme = line.split('=')[1];
-    } else if (line.startsWith('#KODIPROP:license_title=')) {
-      currentChannel.title = line.split('=')[1];
-    } else if (line.startsWith('#KODIPROP:license_url=')) {
-      currentChannel.url = line.split('=')[1];
-    } else if (line.startsWith('#EXTHTTP:')) {
+    } 
+    else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
+      // Extract the clearkey
+      currentChannel.key = line.substring('#KODIPROP:inputstream.adaptive.license_key='.length).trim();
+    } 
+    else if (line.startsWith('#EXTHTTP:')) {
+      // Extract cookie from JSON
       try {
         const jsonMatch = line.match(/#EXTHTTP:(.+)/);
         if (jsonMatch) {
           const headers = JSON.parse(jsonMatch[1]);
-          if (headers['User-Agent']) currentChannel.useragent = headers['User-Agent'];
-          if (headers['Referer']) currentChannel.referer = headers['Referer'];
-          if (headers['Origin']) currentChannel.origin = headers['Origin'];
-          if (headers['Cookie']) currentChannel.cookie = headers['Cookie'];
+          if (headers['cookie']) {
+            currentChannel.cookie = headers['cookie'];
+          }
         }
       } catch (e) {
         console.error('Error parsing EXTHTTP:', e);
       }
-    } else if (line && !line.startsWith('#') && (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp'))) {
-      // Add stream URL with default ID
-      currentChannel.streamUrls['primary'] = line;
-      channels.push(currentChannel);
+    } 
+    else if (line && !line.startsWith('#') && (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp'))) {
+      // This is the stream URL
+      currentChannel.url = line;
+      
+      // Push the complete channel if it has required fields
+      if (currentChannel.title && currentChannel.url && currentChannel.tvgId) {
+        channels.push({ ...currentChannel });
+      }
+      
+      // Reset for next channel
       currentChannel = {};
     }
   }
@@ -536,13 +617,17 @@ function parseEnhancedM3U(content) {
   return channels;
 }
 
+// ===================================
+// ERROR HANDLING
+// ===================================
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
   res.status(500).json({ 
     success: false, 
     message: 'Internal server error', 
-    error: err.message 
+    error: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
   });
 });
 
@@ -551,28 +636,97 @@ app.use((req, res) => {
   res.status(404).json({ 
     success: false, 
     message: 'Endpoint not found',
-    path: req.path 
+    path: req.path,
+    availableEndpoints: {
+      public: [
+        'GET /api/channels',
+        'GET /api/channels/:id',
+        'GET /api/groups',
+        'GET /api/stats',
+        'GET /api/playlist.m3u'
+      ],
+      secure: [
+        'GET /api/secure/channels (requires API key)',
+        'POST /api/channels',
+        'PUT /api/channels/:id',
+        'DELETE /api/channels/:id',
+        'POST /api/channels/bulk'
+      ]
+    }
   });
 });
 
-// Start server
+// ===================================
+// SERVER START
+// ===================================
+
 const server = app.listen(PORT, () => {
   console.log(`
-🚀 Server running on port ${PORT}
-📡 Environment: ${process.env.NODE_ENV || 'development'}
-🌐 API Base URL: http://localhost:${PORT}
-📁 MongoDB: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}
-🔑 Supported DRM: clearkey, widevine, playready
+╔════════════════════════════════════════════════════════╗
+║     🎬 IPTV CHANNEL MANAGER API v2.0                  ║
+╚════════════════════════════════════════════════════════╝
+
+🚀 Server Status: RUNNING
+📡 Port: ${PORT}
+🌍 Environment: ${process.env.NODE_ENV || 'development'}
+🌐 Base URL: http://localhost:${PORT}
+
+📊 MongoDB: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}
+
+🔒 SECURITY FEATURES:
+   • Public API: Sanitized data (no streaming details)
+   • Secure API: Full data (requires API key)
+   • API Key: Set via environment variable API_KEY
+
+📚 API ENDPOINTS:
+
+   PUBLIC (No API Key Required):
+   ├─ GET  /api/channels          (sanitized data)
+   ├─ GET  /api/channels/:id      (sanitized data)
+   ├─ GET  /api/groups
+   ├─ GET  /api/stats
+   └─ GET  /api/playlist.m3u
+
+   SECURE (API Key Required):
+   ├─ GET  /api/channels?apikey=XXX    (full data)
+   ├─ GET  /api/secure/channels        (full data)
+   ├─ POST /api/channels
+   ├─ PUT  /api/channels/:id
+   ├─ DELETE /api/channels/:id
+   └─ POST /api/channels/bulk
+
+💡 Usage:
+   • Header: x-api-key: your-key
+   • Query:  ?apikey=your-key
+
+🎯 Schema: title, url, cookie, key, logo, licenseType
+🔐 Default License: clearkey
+
+════════════════════════════════════════════════════════
   `);
 });
 
-// Graceful shutdown
+// ===================================
+// GRACEFUL SHUTDOWN
+// ===================================
+
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
+  console.log('⚠️  SIGTERM received. Shutting down gracefully...');
   server.close(() => {
-    console.log('Server closed.');
+    console.log('✅ Server closed.');
     mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed.');
+      console.log('✅ MongoDB connection closed.');
+      process.exit(0);
+    });
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('⚠️  SIGINT received. Shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed.');
+    mongoose.connection.close(false, () => {
+      console.log('✅ MongoDB connection closed.');
       process.exit(0);
     });
   });
