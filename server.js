@@ -140,8 +140,8 @@ app.get('/health', (req, res) => {
 // CHANNEL CRUD ENDPOINTS
 // ===================================
 
-// Get all channels (PUBLIC - sanitized OR SECURE - full data)
-app.get('/api/channels', checkSecureAccess, async (req, res) => {
+// Get all channels (Always returns FULL data)
+app.get('/api/channels', async (req, res) => {
   try {
     const { groupTitle, active, search } = req.query;
     let query = {};
@@ -159,15 +159,13 @@ app.get('/api/channels', checkSecureAccess, async (req, res) => {
 
     const channels = await Channel.find(query).sort({ title: 1 });
     
-    // Sanitize data based on access level
-    const sanitized = channels.map(ch => sanitizeChannel(ch, req.secureAccess));
+    // Return full data for all channels
+    const fullData = channels.map(ch => sanitizeChannel(ch, true));
 
     res.json({ 
       success: true, 
       count: channels.length,
-      secure: req.secureAccess,
-      message: req.secureAccess ? 'Full data returned' : 'Public data only (use API key for full access)',
-      data: sanitized
+      data: fullData
     });
   } catch (error) {
     console.error('Error fetching channels:', error);
@@ -179,8 +177,8 @@ app.get('/api/channels', checkSecureAccess, async (req, res) => {
   }
 });
 
-// Get single channel by ID (PUBLIC - sanitized OR SECURE - full data)
-app.get('/api/channels/:id', checkSecureAccess, async (req, res) => {
+// Get single channel by ID (Always returns FULL data)
+app.get('/api/channels/:id', async (req, res) => {
   try {
     const channel = await Channel.findById(req.params.id);
     if (!channel) {
@@ -190,12 +188,12 @@ app.get('/api/channels/:id', checkSecureAccess, async (req, res) => {
       });
     }
     
-    const sanitized = sanitizeChannel(channel, req.secureAccess);
+    // Return full data
+    const fullData = sanitizeChannel(channel, true);
     
     res.json({ 
       success: true, 
-      secure: req.secureAccess,
-      data: sanitized 
+      data: fullData 
     });
   } catch (error) {
     console.error('Error fetching channel:', error);
@@ -327,17 +325,38 @@ app.delete('/api/channels/:id', async (req, res) => {
   }
 });
 
+// Delete all channels
+app.delete('/api/channels', async (req, res) => {
+  try {
+    const result = await Channel.deleteMany({});
+
+    res.json({ 
+      success: true, 
+      message: `Successfully deleted all channels`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error deleting all channels:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error deleting all channels', 
+      error: error.message 
+    });
+  }
+});
+
 // ===================================
-// SECURE ENDPOINT (Requires API Key)
+// SECURE ENDPOINT (Requires API Key) - DEPRECATED
 // ===================================
 
-// Get full channel data with API key
+// This endpoint is kept for backward compatibility but is no longer needed
+// Use /api/channels directly instead
 app.get('/api/secure/channels', checkSecureAccess, async (req, res) => {
   try {
     if (!req.secureAccess) {
       return res.status(401).json({
         success: false,
-        message: 'API key required. Add x-api-key header or ?apikey= query parameter'
+        message: 'This endpoint is deprecated. Use /api/channels directly for full data access.'
       });
     }
 
@@ -360,7 +379,7 @@ app.get('/api/secure/channels', checkSecureAccess, async (req, res) => {
     res.json({ 
       success: true, 
       count: channels.length,
-      secure: true,
+      message: 'Please use /api/channels instead',
       data: fullData
     });
   } catch (error) {
@@ -637,22 +656,18 @@ app.use((req, res) => {
     success: false, 
     message: 'Endpoint not found',
     path: req.path,
-    availableEndpoints: {
-      public: [
-        'GET /api/channels',
-        'GET /api/channels/:id',
-        'GET /api/groups',
-        'GET /api/stats',
-        'GET /api/playlist.m3u'
-      ],
-      secure: [
-        'GET /api/secure/channels (requires API key)',
-        'POST /api/channels',
-        'PUT /api/channels/:id',
-        'DELETE /api/channels/:id',
-        'POST /api/channels/bulk'
-      ]
-    }
+    availableEndpoints: [
+      'GET /api/channels',
+      'GET /api/channels/:id',
+      'GET /api/groups',
+      'GET /api/stats',
+      'GET /api/playlist.m3u',
+      'POST /api/channels',
+      'PUT /api/channels/:id',
+      'DELETE /api/channels/:id',
+      'DELETE /api/channels (delete all)',
+      'POST /api/channels/bulk'
+    ]
   });
 });
 
@@ -673,34 +688,23 @@ const server = app.listen(PORT, () => {
 
 📊 MongoDB: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}
 
-🔒 SECURITY FEATURES:
-   • Public API: Sanitized data (no streaming details)
-   • Secure API: Full data (requires API key)
-   • API Key: Set via environment variable API_KEY
-
 📚 API ENDPOINTS:
 
-   PUBLIC (No API Key Required):
-   ├─ GET  /api/channels          (sanitized data)
-   ├─ GET  /api/channels/:id      (sanitized data)
+   PUBLIC (No Authentication Required):
+   ├─ GET  /api/channels          ✅ Full channel data
+   ├─ GET  /api/channels/:id      ✅ Full channel data
    ├─ GET  /api/groups
    ├─ GET  /api/stats
-   └─ GET  /api/playlist.m3u
-
-   SECURE (API Key Required):
-   ├─ GET  /api/channels?apikey=XXX    (full data)
-   ├─ GET  /api/secure/channels        (full data)
+   ├─ GET  /api/playlist.m3u
    ├─ POST /api/channels
    ├─ PUT  /api/channels/:id
    ├─ DELETE /api/channels/:id
+   ├─ DELETE /api/channels        ⚠️  Delete ALL channels
    └─ POST /api/channels/bulk
-
-💡 Usage:
-   • Header: x-api-key: your-key
-   • Query:  ?apikey=your-key
 
 🎯 Schema: title, url, cookie, key, logo, licenseType
 🔐 Default License: clearkey
+✅ All data publicly accessible
 
 ════════════════════════════════════════════════════════
   `);
