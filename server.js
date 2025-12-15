@@ -1,9 +1,9 @@
-// Complete Secure IPTV Channel Manager API
-// Simplified schema with security features
+// Complete Secure IPTV Channel Manager API with Playlist URL Management
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
+const axios = require('axios'); // Add this dependency: npm install axios
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,28 +19,48 @@ mongoose.connect(MONGODB_URI, {
 .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // ===================================
-// SIMPLIFIED CHANNEL SCHEMA
+// SCHEMAS
 // ===================================
+
+// Channel Schema
 const channelSchema = new mongoose.Schema({
-  title: { type: String, required: true }, // Channel name
-  url: { type: String, required: true }, // Streaming URL
-  cookie: { type: String, default: '' }, // Cookie for authentication
-  key: { type: String, default: '' }, // DRM clearkey
-  logo: { type: String, default: '' }, // Channel logo
-  licenseType: { type: String, default: 'clearkey' }, // Always clearkey
-  groupTitle: { type: String, default: 'General' }, // Category
-  tvgId: { type: String, required: true, unique: true }, // Unique identifier
+  title: { type: String, required: true },
+  url: { type: String, required: true },
+  cookie: { type: String, default: '' },
+  key: { type: String, default: '' },
+  logo: { type: String, default: '' },
+  licenseType: { type: String, default: 'clearkey' },
+  groupTitle: { type: String, default: 'General' },
+  tvgId: { type: String, required: true, unique: true },
   isActive: { type: Boolean, default: true },
+  sourcePlaylistId: { type: mongoose.Schema.Types.ObjectId, ref: 'Playlist', default: null }, // Track source
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, {
   timestamps: true
 });
 
-// Add indexes for faster queries
 channelSchema.index({ title: 1, groupTitle: 1, tvgId: 1 });
 
+// Playlist URL Schema
+const playlistSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  url: { type: String, required: true, unique: true },
+  isActive: { type: Boolean, default: true },
+  autoSync: { type: Boolean, default: true }, // Auto-sync on changes
+  syncInterval: { type: Number, default: 3600000 }, // Sync every hour (in ms)
+  lastSyncAt: { type: Date, default: null },
+  lastSyncStatus: { type: String, default: 'pending' }, // pending, success, error
+  lastSyncMessage: { type: String, default: '' },
+  channelCount: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, {
+  timestamps: true
+});
+
 const Channel = mongoose.model('Channel', channelSchema);
+const Playlist = mongoose.model('Playlist', playlistSchema);
 
 // ===================================
 // MIDDLEWARE
@@ -53,22 +73,19 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static('public'));
 
-// Request logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
 // ===================================
-// SECURITY FUNCTIONS
+// UTILITY FUNCTIONS
 // ===================================
 
-// Sanitize channel data based on access level
 function sanitizeChannel(channel, includeSecure = false) {
   const channelObj = channel.toObject ? channel.toObject() : channel;
   
   if (!includeSecure) {
-    // PUBLIC API - Hide sensitive data
     return {
       _id: channelObj._id,
       title: channelObj.title,
@@ -77,7 +94,6 @@ function sanitizeChannel(channel, includeSecure = false) {
       tvgId: channelObj.tvgId,
       isActive: channelObj.isActive,
       licenseType: channelObj.licenseType,
-      // Indicators only (no actual data)
       hasUrl: !!channelObj.url,
       hasCookie: !!channelObj.cookie,
       hasKey: !!channelObj.key,
@@ -86,7 +102,6 @@ function sanitizeChannel(channel, includeSecure = false) {
     };
   }
   
-  // SECURE API - Return full data
   return {
     _id: channelObj._id,
     title: channelObj.title,
@@ -98,57 +113,437 @@ function sanitizeChannel(channel, includeSecure = false) {
     groupTitle: channelObj.groupTitle,
     tvgId: channelObj.tvgId,
     isActive: channelObj.isActive,
+    sourcePlaylistId: channelObj.sourcePlaylistId,
     createdAt: channelObj.createdAt,
     updatedAt: channelObj.updatedAt
   };
 }
 
-// Check for secure access token
-function checkSecureAccess(req, res, next) {
-  const token = req.headers['x-api-key'] || req.query.apikey;
-  const validToken = process.env.API_KEY || 'your-secure-api-key-change-this'; 
+function parseSimplifiedM3U(content) {
+  const lines = content.split('\n').map(line => line.trim());
+  const channels = [];
+  let currentChannel = {};
   
-  if (token === validToken) {
-    req.secureAccess = true;
-  } else {
-    req.secureAccess = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    if (line.startsWith('#EXTINF:')) {
+      const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
+      const groupMatch = line.match(/group-title="([^"]*)"/);
+      const logoMatch = line.match(/tvg-logo="([^"]*)"/);
+      const nameMatch = line.match(/,(.+)$/);
+      
+      currentChannel = {
+        title: nameMatch ? nameMatch[1].trim() : 'Unknown Channel',
+        tvgId: tvgIdMatch && tvgIdMatch[1] ? tvgIdMatch[1] : `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        groupTitle: groupMatch ? groupMatch[1] : 'General',
+        logo: logoMatch ? logoMatch[1] : '',
+        licenseType: 'clearkey',
+        key: '',
+        cookie: '',
+        url: ''
+      };
+    } 
+    else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
+      currentChannel.key = line.substring('#KODIPROP:inputstream.adaptive.license_key='.length).trim();
+    } 
+    else if (line.startsWith('#EXTHTTP:')) {
+      try {
+        const jsonMatch = line.match(/#EXTHTTP:(.+)/);
+        if (jsonMatch) {
+          const headers = JSON.parse(jsonMatch[1]);
+          if (headers['cookie']) {
+            currentChannel.cookie = headers['cookie'];
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing EXTHTTP:', e);
+      }
+    } 
+    else if (line && !line.startsWith('#') && (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp'))) {
+      currentChannel.url = line;
+      
+      if (currentChannel.title && currentChannel.url && currentChannel.tvgId) {
+        channels.push({ ...currentChannel });
+      }
+      
+      currentChannel = {};
+    }
   }
-  next();
+  
+  return channels;
+}
+
+// Fetch M3U content from URL
+async function fetchM3UContent(url) {
+  try {
+    const response = await axios.get(url, {
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'IPTV-Manager/2.0'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(`Failed to fetch playlist: ${error.message}`);
+  }
+}
+
+// Sync channels from a playlist
+async function syncPlaylistChannels(playlistId) {
+  const playlist = await Playlist.findById(playlistId);
+  if (!playlist) {
+    throw new Error('Playlist not found');
+  }
+
+  try {
+    console.log(`🔄 Syncing playlist: ${playlist.name} (${playlist.url})`);
+    
+    // Fetch M3U content
+    const m3uContent = await fetchM3UContent(playlist.url);
+    const channels = parseSimplifiedM3U(m3uContent);
+    
+    const results = { 
+      added: 0, 
+      updated: 0,
+      skipped: 0, 
+      errors: 0, 
+      total: channels.length
+    };
+
+    // Process each channel
+    for (const channelData of channels) {
+      try {
+        const existing = await Channel.findOne({ tvgId: channelData.tvgId });
+        
+        if (existing) {
+          // Update existing channel
+          await Channel.findByIdAndUpdate(existing._id, {
+            ...channelData,
+            sourcePlaylistId: playlistId,
+            updatedAt: Date.now()
+          });
+          results.updated++;
+        } else {
+          // Add new channel
+          const channel = new Channel({
+            ...channelData,
+            sourcePlaylistId: playlistId
+          });
+          await channel.save();
+          results.added++;
+        }
+      } catch (error) {
+        console.error(`Error processing channel ${channelData.title}:`, error);
+        results.errors++;
+      }
+    }
+
+    // Update playlist sync status
+    await Playlist.findByIdAndUpdate(playlistId, {
+      lastSyncAt: Date.now(),
+      lastSyncStatus: 'success',
+      lastSyncMessage: `Successfully synced ${results.added + results.updated} channels`,
+      channelCount: results.added + results.updated,
+      updatedAt: Date.now()
+    });
+
+    console.log(`✅ Sync completed: +${results.added} added, ${results.updated} updated, ${results.errors} errors`);
+    return results;
+
+  } catch (error) {
+    console.error(`❌ Sync failed for ${playlist.name}:`, error);
+    
+    await Playlist.findByIdAndUpdate(playlistId, {
+      lastSyncAt: Date.now(),
+      lastSyncStatus: 'error',
+      lastSyncMessage: error.message,
+      updatedAt: Date.now()
+    });
+    
+    throw error;
+  }
 }
 
 // ===================================
 // BASIC ROUTES
 // ===================================
 
-// Serve frontend
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/index.html');
 });
 
-// Health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy',
     mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    api: 'Secure IPTV Channel Manager API v2.0'
+    api: 'IPTV Channel Manager API v2.1 with Playlist URLs'
   });
+});
+
+// ===================================
+// PLAYLIST URL ENDPOINTS
+// ===================================
+
+// Get all playlists
+app.get('/api/playlists', async (req, res) => {
+  try {
+    const playlists = await Playlist.find().sort({ createdAt: -1 });
+    res.json({ 
+      success: true, 
+      count: playlists.length,
+      data: playlists
+    });
+  } catch (error) {
+    console.error('Error fetching playlists:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching playlists', 
+      error: error.message 
+    });
+  }
+});
+
+// Get single playlist
+app.get('/api/playlists/:id', async (req, res) => {
+  try {
+    const playlist = await Playlist.findById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Playlist not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      data: playlist 
+    });
+  } catch (error) {
+    console.error('Error fetching playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching playlist', 
+      error: error.message 
+    });
+  }
+});
+
+// Add new playlist
+app.post('/api/playlists', async (req, res) => {
+  try {
+    const { name, url, autoSync, syncInterval } = req.body;
+
+    if (!name || !url) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required fields: name and url are mandatory' 
+      });
+    }
+
+    // Check if playlist URL already exists
+    const existing = await Playlist.findOne({ url });
+    if (existing) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Playlist with this URL already exists' 
+      });
+    }
+
+    const playlistData = {
+      name,
+      url,
+      autoSync: autoSync !== undefined ? autoSync : true,
+      syncInterval: syncInterval || 3600000 // Default 1 hour
+    };
+
+    const playlist = new Playlist(playlistData);
+    await playlist.save();
+
+    // Trigger initial sync if autoSync is enabled
+    if (playlist.autoSync) {
+      try {
+        const syncResults = await syncPlaylistChannels(playlist._id);
+        res.status(201).json({ 
+          success: true, 
+          message: 'Playlist added and synced successfully', 
+          data: playlist,
+          syncResults
+        });
+      } catch (syncError) {
+        res.status(201).json({ 
+          success: true, 
+          message: 'Playlist added but initial sync failed', 
+          data: playlist,
+          syncError: syncError.message
+        });
+      }
+    } else {
+      res.status(201).json({ 
+        success: true, 
+        message: 'Playlist added successfully (sync disabled)', 
+        data: playlist
+      });
+    }
+  } catch (error) {
+    console.error('Error adding playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error adding playlist', 
+      error: error.message 
+    });
+  }
+});
+
+// Update playlist
+app.put('/api/playlists/:id', async (req, res) => {
+  try {
+    const updates = req.body;
+    updates.updatedAt = Date.now();
+
+    const playlist = await Playlist.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    );
+
+    if (!playlist) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Playlist not found' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Playlist updated successfully', 
+      data: playlist
+    });
+  } catch (error) {
+    console.error('Error updating playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error updating playlist', 
+      error: error.message 
+    });
+  }
+});
+
+// Delete playlist (optionally keep or delete its channels)
+app.delete('/api/playlists/:id', async (req, res) => {
+  try {
+    const { deleteChannels } = req.query; // ?deleteChannels=true to delete channels too
+    const playlist = await Playlist.findById(req.params.id);
+
+    if (!playlist) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Playlist not found' 
+      });
+    }
+
+    // Delete associated channels if requested
+    if (deleteChannels === 'true') {
+      const deleteResult = await Channel.deleteMany({ sourcePlaylistId: req.params.id });
+      console.log(`Deleted ${deleteResult.deletedCount} channels from playlist ${playlist.name}`);
+    } else {
+      // Just remove the playlist reference from channels
+      await Channel.updateMany(
+        { sourcePlaylistId: req.params.id },
+        { $set: { sourcePlaylistId: null } }
+      );
+    }
+
+    await Playlist.findByIdAndDelete(req.params.id);
+
+    res.json({ 
+      success: true, 
+      message: 'Playlist deleted successfully',
+      deletedPlaylist: playlist.name
+    });
+  } catch (error) {
+    console.error('Error deleting playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error deleting playlist', 
+      error: error.message 
+    });
+  }
+});
+
+// Manually trigger sync for a specific playlist
+app.post('/api/playlists/:id/sync', async (req, res) => {
+  try {
+    const syncResults = await syncPlaylistChannels(req.params.id);
+    res.json({ 
+      success: true, 
+      message: 'Playlist synced successfully',
+      results: syncResults
+    });
+  } catch (error) {
+    console.error('Error syncing playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error syncing playlist', 
+      error: error.message 
+    });
+  }
+});
+
+// Sync all active playlists
+app.post('/api/playlists/sync-all', async (req, res) => {
+  try {
+    const playlists = await Playlist.find({ isActive: true, autoSync: true });
+    const results = [];
+
+    for (const playlist of playlists) {
+      try {
+        const syncResult = await syncPlaylistChannels(playlist._id);
+        results.push({
+          playlistId: playlist._id,
+          name: playlist.name,
+          status: 'success',
+          ...syncResult
+        });
+      } catch (error) {
+        results.push({
+          playlistId: playlist._id,
+          name: playlist.name,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Synced ${results.length} playlists`,
+      results
+    });
+  } catch (error) {
+    console.error('Error syncing all playlists:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error syncing playlists', 
+      error: error.message 
+    });
+  }
 });
 
 // ===================================
 // CHANNEL CRUD ENDPOINTS
 // ===================================
 
-// Get all channels (Always returns FULL data)
 app.get('/api/channels', async (req, res) => {
   try {
-    const { groupTitle, active, search } = req.query;
+    const { groupTitle, active, search, playlistId } = req.query;
     let query = {};
 
-    // Build query filters
     if (groupTitle) query.groupTitle = groupTitle;
     if (active !== undefined) query.isActive = active === 'true';
+    if (playlistId) query.sourcePlaylistId = playlistId;
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: 'i' } },
@@ -158,8 +553,6 @@ app.get('/api/channels', async (req, res) => {
     }
 
     const channels = await Channel.find(query).sort({ title: 1 });
-    
-    // Return full data for all channels
     const fullData = channels.map(ch => sanitizeChannel(ch, true));
 
     res.json({ 
@@ -177,7 +570,6 @@ app.get('/api/channels', async (req, res) => {
   }
 });
 
-// Get single channel by ID (Always returns FULL data)
 app.get('/api/channels/:id', async (req, res) => {
   try {
     const channel = await Channel.findById(req.params.id);
@@ -188,7 +580,6 @@ app.get('/api/channels/:id', async (req, res) => {
       });
     }
     
-    // Return full data
     const fullData = sanitizeChannel(channel, true);
     
     res.json({ 
@@ -205,12 +596,10 @@ app.get('/api/channels/:id', async (req, res) => {
   }
 });
 
-// Add new channel
 app.post('/api/channels', async (req, res) => {
   try {
     const { title, url, cookie, key, logo, groupTitle, tvgId } = req.body;
 
-    // Validate required fields
     if (!title || !url) {
       return res.status(400).json({ 
         success: false, 
@@ -218,10 +607,8 @@ app.post('/api/channels', async (req, res) => {
       });
     }
 
-    // Generate tvgId if not provided
     const finalTvgId = tvgId || `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Check if channel already exists
     const existing = await Channel.findOne({ tvgId: finalTvgId });
     if (existing) {
       return res.status(409).json({ 
@@ -236,7 +623,7 @@ app.post('/api/channels', async (req, res) => {
       cookie: cookie || '',
       key: key || '',
       logo: logo || '',
-      licenseType: 'clearkey', // Always clearkey by default
+      licenseType: 'clearkey',
       groupTitle: groupTitle || 'General',
       tvgId: finalTvgId
     };
@@ -259,13 +646,11 @@ app.post('/api/channels', async (req, res) => {
   }
 });
 
-// Update channel
 app.put('/api/channels/:id', async (req, res) => {
   try {
     const updates = req.body;
     updates.updatedAt = Date.now();
 
-    // Always keep clearkey as license type
     if (updates.licenseType) {
       updates.licenseType = 'clearkey';
     }
@@ -298,7 +683,6 @@ app.put('/api/channels/:id', async (req, res) => {
   }
 });
 
-// Delete channel
 app.delete('/api/channels/:id', async (req, res) => {
   try {
     const channel = await Channel.findByIdAndDelete(req.params.id);
@@ -325,7 +709,6 @@ app.delete('/api/channels/:id', async (req, res) => {
   }
 });
 
-// Delete all channels
 app.delete('/api/channels', async (req, res) => {
   try {
     const result = await Channel.deleteMany({});
@@ -346,57 +729,9 @@ app.delete('/api/channels', async (req, res) => {
 });
 
 // ===================================
-// SECURE ENDPOINT (Requires API Key) - DEPRECATED
-// ===================================
-
-// This endpoint is kept for backward compatibility but is no longer needed
-// Use /api/channels directly instead
-app.get('/api/secure/channels', checkSecureAccess, async (req, res) => {
-  try {
-    if (!req.secureAccess) {
-      return res.status(401).json({
-        success: false,
-        message: 'This endpoint is deprecated. Use /api/channels directly for full data access.'
-      });
-    }
-
-    const { groupTitle, active, search } = req.query;
-    let query = {};
-
-    if (groupTitle) query.groupTitle = groupTitle;
-    if (active !== undefined) query.isActive = active === 'true';
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { tvgId: { $regex: search, $options: 'i' } },
-        { groupTitle: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    const channels = await Channel.find(query).sort({ title: 1 });
-    const fullData = channels.map(ch => sanitizeChannel(ch, true));
-
-    res.json({ 
-      success: true, 
-      count: channels.length,
-      message: 'Please use /api/channels instead',
-      data: fullData
-    });
-  } catch (error) {
-    console.error('Error fetching secure channels:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching channels', 
-      error: error.message 
-    });
-  }
-});
-
-// ===================================
 // UTILITY ENDPOINTS
 // ===================================
 
-// Get unique group titles
 app.get('/api/groups', async (req, res) => {
   try {
     const groups = await Channel.distinct('groupTitle');
@@ -415,13 +750,14 @@ app.get('/api/groups', async (req, res) => {
   }
 });
 
-// Get statistics
 app.get('/api/stats', async (req, res) => {
   try {
     const total = await Channel.countDocuments();
     const active = await Channel.countDocuments({ isActive: true });
     const groups = await Channel.distinct('groupTitle');
     const withDRM = await Channel.countDocuments({ key: { $ne: '' } });
+    const totalPlaylists = await Playlist.countDocuments();
+    const activePlaylists = await Playlist.countDocuments({ isActive: true });
 
     res.json({
       success: true,
@@ -431,6 +767,8 @@ app.get('/api/stats', async (req, res) => {
         inactiveChannels: total - active,
         totalGroups: groups.length,
         channelsWithDRM: withDRM,
+        totalPlaylists,
+        activePlaylists,
         groups: groups.sort()
       }
     });
@@ -448,7 +786,6 @@ app.get('/api/stats', async (req, res) => {
 // M3U PLAYLIST GENERATION
 // ===================================
 
-// Generate M3U playlist with full data
 app.get('/api/playlist.m3u', async (req, res) => {
   try {
     const { groupTitle } = req.query;
@@ -462,21 +799,17 @@ app.get('/api/playlist.m3u', async (req, res) => {
     for (const channel of channels) {
       if (!channel.url) continue;
 
-      // Add channel info line
       m3u += `#EXTINF:-1 tvg-id="${channel.tvgId}" group-title="${channel.groupTitle}" tvg-logo="${channel.logo}",${channel.title}\n`;
       
-      // Add DRM properties if key exists
       if (channel.key) {
         m3u += `#KODIPROP:inputstream.adaptive.license_type=clearkey\n`;
         m3u += `#KODIPROP:inputstream.adaptive.license_key=${channel.key}\n`;
       }
       
-      // Add cookie as HTTP header if exists
       if (channel.cookie) {
         m3u += `#EXTHTTP:{"cookie":"${channel.cookie}"}\n`;
       }
       
-      // Add stream URL
       m3u += `${channel.url}\n\n`;
     }
 
@@ -523,7 +856,6 @@ app.post('/api/channels/bulk', async (req, res) => {
         const existing = await Channel.findOne({ tvgId: channelData.tvgId });
         
         if (existing) {
-          // Update existing channel
           await Channel.findByIdAndUpdate(existing._id, {
             ...channelData,
             updatedAt: Date.now()
@@ -535,7 +867,6 @@ app.post('/api/channels/bulk', async (req, res) => {
             tvgId: channelData.tvgId 
           });
         } else {
-          // Add new channel
           const channel = new Channel(channelData);
           await channel.save();
           results.added++;
@@ -572,75 +903,9 @@ app.post('/api/channels/bulk', async (req, res) => {
 });
 
 // ===================================
-// M3U PARSER (Simplified)
-// ===================================
-
-function parseSimplifiedM3U(content) {
-  const lines = content.split('\n').map(line => line.trim());
-  const channels = [];
-  let currentChannel = {};
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    if (line.startsWith('#EXTINF:')) {
-      // Parse channel info
-      const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
-      const groupMatch = line.match(/group-title="([^"]*)"/);
-      const logoMatch = line.match(/tvg-logo="([^"]*)"/);
-      const nameMatch = line.match(/,(.+)$/);
-      
-      currentChannel = {
-        title: nameMatch ? nameMatch[1].trim() : 'Unknown Channel',
-        tvgId: tvgIdMatch && tvgIdMatch[1] ? tvgIdMatch[1] : `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        groupTitle: groupMatch ? groupMatch[1] : 'General',
-        logo: logoMatch ? logoMatch[1] : '',
-        licenseType: 'clearkey',
-        key: '',
-        cookie: '',
-        url: ''
-      };
-    } 
-    else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
-      // Extract the clearkey
-      currentChannel.key = line.substring('#KODIPROP:inputstream.adaptive.license_key='.length).trim();
-    } 
-    else if (line.startsWith('#EXTHTTP:')) {
-      // Extract cookie from JSON
-      try {
-        const jsonMatch = line.match(/#EXTHTTP:(.+)/);
-        if (jsonMatch) {
-          const headers = JSON.parse(jsonMatch[1]);
-          if (headers['cookie']) {
-            currentChannel.cookie = headers['cookie'];
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing EXTHTTP:', e);
-      }
-    } 
-    else if (line && !line.startsWith('#') && (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp'))) {
-      // This is the stream URL
-      currentChannel.url = line;
-      
-      // Push the complete channel if it has required fields
-      if (currentChannel.title && currentChannel.url && currentChannel.tvgId) {
-        channels.push({ ...currentChannel });
-      }
-      
-      // Reset for next channel
-      currentChannel = {};
-    }
-  }
-  
-  return channels;
-}
-
-// ===================================
 // ERROR HANDLING
 // ===================================
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
   res.status(500).json({ 
@@ -650,26 +915,42 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
     success: false, 
     message: 'Endpoint not found',
-    path: req.path,
-    availableEndpoints: [
-      'GET /api/channels',
-      'GET /api/channels/:id',
-      'GET /api/groups',
-      'GET /api/stats',
-      'GET /api/playlist.m3u',
-      'POST /api/channels',
-      'PUT /api/channels/:id',
-      'DELETE /api/channels/:id',
-      'DELETE /api/channels (delete all)',
-      'POST /api/channels/bulk'
-    ]
+    path: req.path
   });
 });
+
+// ===================================
+// AUTO-SYNC SCHEDULER (Optional)
+// ===================================
+
+// Run auto-sync every hour for active playlists
+setInterval(async () => {
+  try {
+    const playlists = await Playlist.find({ 
+      isActive: true, 
+      autoSync: true 
+    });
+
+    for (const playlist of playlists) {
+      const timeSinceLastSync = Date.now() - (playlist.lastSyncAt || 0);
+      
+      if (timeSinceLastSync >= playlist.syncInterval) {
+        console.log(`⏰ Auto-syncing playlist: ${playlist.name}`);
+        try {
+          await syncPlaylistChannels(playlist._id);
+        } catch (error) {
+          console.error(`Auto-sync failed for ${playlist.name}:`, error);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in auto-sync scheduler:', error);
+  }
+}, 300000); // Check every 5 minutes
 
 // ===================================
 // SERVER START
@@ -678,7 +959,7 @@ app.use((req, res) => {
 const server = app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════╗
-║     🎬 IPTV CHANNEL MANAGER API v2.0                  ║
+║     🎬 IPTV CHANNEL MANAGER API v2.1                  ║
 ╚════════════════════════════════════════════════════════╝
 
 🚀 Server Status: RUNNING
@@ -690,21 +971,31 @@ const server = app.listen(PORT, () => {
 
 📚 API ENDPOINTS:
 
-   PUBLIC (No Authentication Required):
-   ├─ GET  /api/channels          ✅ Full channel data
-   ├─ GET  /api/channels/:id      ✅ Full channel data
-   ├─ GET  /api/groups
-   ├─ GET  /api/stats
-   ├─ GET  /api/playlist.m3u
-   ├─ POST /api/channels
-   ├─ PUT  /api/channels/:id
-   ├─ DELETE /api/channels/:id
-   ├─ DELETE /api/channels        ⚠️  Delete ALL channels
-   └─ POST /api/channels/bulk
+   PLAYLIST MANAGEMENT:
+   ├─ GET    /api/playlists              List all playlists
+   ├─ POST   /api/playlists              Add playlist URL
+   ├─ GET    /api/playlists/:id          Get playlist details
+   ├─ PUT    /api/playlists/:id          Update playlist
+   ├─ DELETE /api/playlists/:id          Delete playlist
+   ├─ POST   /api/playlists/:id/sync     Sync specific playlist
+   └─ POST   /api/playlists/sync-all     Sync all playlists
 
-🎯 Schema: title, url, cookie, key, logo, licenseType
-🔐 Default License: clearkey
-✅ All data publicly accessible
+   CHANNEL MANAGEMENT:
+   ├─ GET    /api/channels               All channels (full data)
+   ├─ GET    /api/channels/:id           Single channel
+   ├─ POST   /api/channels               Add channel
+   ├─ PUT    /api/channels/:id           Update channel
+   ├─ DELETE /api/channels/:id           Delete channel
+   ├─ DELETE /api/channels               Delete all
+   └─ POST   /api/channels/bulk          Bulk import
+
+   UTILITIES:
+   ├─ GET    /api/groups                 Get categories
+   ├─ GET    /api/stats                  Get statistics
+   └─ GET    /api/playlist.m3u           Export M3U
+
+🔄 Auto-sync: Enabled (checks every 5 minutes)
+🎯 Example Playlist: https://clarity-tv.vercel.app/api/jstar
 
 ════════════════════════════════════════════════════════
   `);
