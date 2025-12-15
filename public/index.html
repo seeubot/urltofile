@@ -3,1386 +3,701 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IPTV Channel Manager</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <title>IPTV Channel Manager - With Playlist URLs</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        :root {
-            --primary: #4361ee;
-            --primary-dark: #3a56d4;
-            --secondary: #7209b7;
-            --success: #4cc9f0;
-            --danger: #f72585;
-            --warning: #f8961e;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --gray: #6c757d;
-            --border: #dee2e6;
-            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            color: var(--dark);
+            padding: 20px;
         }
 
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
         }
 
-        header {
-            background: white;
-            border-radius: 15px;
-            padding: 25px 30px;
-            margin-bottom: 25px;
-            box-shadow: var(--card-shadow);
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .tabs {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
             flex-wrap: wrap;
         }
 
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 15px;
+        .tab {
+            padding: 12px 24px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
         }
 
-        .logo i {
-            color: var(--primary);
-            font-size: 2.5rem;
+        .tab:hover {
+            background: rgba(255,255,255,0.3);
         }
 
-        .logo h1 {
-            color: var(--primary);
-            font-size: 2rem;
-        }
-
-        .server-status {
-            background: var(--light);
-            padding: 10px 20px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 500;
-        }
-
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #28a745;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            gap: 25px;
-        }
-
-        .sidebar {
+        .tab.active {
             background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: var(--card-shadow);
-            height: fit-content;
-        }
-
-        .sidebar h2 {
-            color: var(--primary);
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .nav-menu {
-            list-style: none;
-        }
-
-        .nav-item {
-            margin-bottom: 10px;
-        }
-
-        .nav-link {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 15px;
-            border-radius: 10px;
-            color: var(--dark);
-            text-decoration: none;
-            transition: all 0.3s ease;
-            font-weight: 500;
-        }
-
-        .nav-link:hover, .nav-link.active {
-            background: var(--primary);
-            color: white;
-            transform: translateX(5px);
-        }
-
-        .nav-link i {
-            width: 20px;
-            text-align: center;
-        }
-
-        .content-area {
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: var(--card-shadow);
-            min-height: 500px;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .section-header h2 {
-            color: var(--primary);
-        }
-
-        .btn {
-            padding: 12px 25px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--primary-dark);
-            transform: translateY(-2px);
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-warning {
-            background: var(--warning);
-            color: white;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        input, select, textarea {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid var(--border);
-            border-radius: 8px;
-            font-size: 14px;
-            transition: border 0.3s ease;
-        }
-
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        .stats-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .stat-card {
-            background: var(--light);
-            padding: 25px;
-            border-radius: 12px;
-            text-align: center;
-            transition: transform 0.3s ease;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--primary);
-            margin-bottom: 10px;
-        }
-
-        .stat-label {
-            color: var(--gray);
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .table-container {
-            overflow-x: auto;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            margin-top: 20px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 800px;
-        }
-
-        th {
-            background: var(--primary);
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-        }
-
-        td {
-            padding: 15px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        tr:hover {
-            background: var(--light);
-        }
-
-        .badge {
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-block;
-        }
-
-        .badge-success {
-            background: #d1f7c4;
-            color: #2e7d32;
-        }
-
-        .badge-danger {
-            background: #ffd1d1;
-            color: #c62828;
-        }
-
-        .badge-info {
-            background: #d1e9ff;
-            color: #1565c0;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-        }
-
-        .action-btn {
-            width: 35px;
-            height: 35px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: none;
-        }
-
-        .action-btn.edit {
-            background: var(--success);
-            color: white;
-        }
-
-        .action-btn.delete {
-            background: var(--danger);
-            color: white;
-        }
-
-        .action-btn.view {
-            background: var(--primary);
-            color: white;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 15px;
-            width: 90%;
-            max-width: 500px;
-            max-height: 90vh;
-            overflow-y: auto;
-            padding: 30px;
-            animation: modalSlide 0.3s ease;
-        }
-
-        @keyframes modalSlide {
-            from { transform: translateY(-50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .modal-header h3 {
-            color: var(--primary);
-        }
-
-        .close-modal {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: var(--gray);
-        }
-
-        .alert {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .alert-success {
-            background: #d1f7c4;
-            color: #2e7d32;
-            border: 1px solid #a5d6a7;
-        }
-
-        .alert-error {
-            background: #ffd1d1;
-            color: #c62828;
-            border: 1px solid #ef9a9a;
-        }
-
-        .m3u-preview {
-            background: #f8f9fa;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 10px;
-            font-family: monospace;
-            font-size: 12px;
-            max-height: 200px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-
-        .tab-navigation {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 25px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .tab-btn {
-            padding: 12px 25px;
-            background: none;
-            border: none;
-            border-bottom: 3px solid transparent;
-            cursor: pointer;
-            font-weight: 600;
-            color: var(--gray);
-            transition: all 0.3s ease;
-        }
-
-        .tab-btn.active {
-            color: var(--primary);
-            border-bottom: 3px solid var(--primary);
+            color: #667eea;
+            font-weight: bold;
         }
 
         .tab-content {
             display: none;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
 
         .tab-content.active {
             display: block;
         }
 
-        .footer {
-            text-align: center;
-            margin-top: 40px;
+        .playlist-form {
+            background: #f8f9fa;
             padding: 20px;
-            color: white;
-            opacity: 0.8;
+            border-radius: 8px;
+            margin-bottom: 20px;
         }
 
-        @media (max-width: 1024px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-            
-            .sidebar {
-                display: none;
-            }
-            
-            .mobile-menu-btn {
-                display: block;
-            }
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .playlist-list {
+            margin-top: 20px;
+        }
+
+        .playlist-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .playlist-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .playlist-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .playlist-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .playlist-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .playlist-url {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+
+        .playlist-info {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 10px 0;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .playlist-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 8px;
+            color: white;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
         }
 
         @media (max-width: 768px) {
-            .grid-2 {
-                grid-template-columns: 1fr;
+            .header h1 {
+                font-size: 1.8em;
             }
-            
-            .stats-cards {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            
-            header {
+
+            .playlist-header {
                 flex-direction: column;
-                gap: 20px;
-                text-align: center;
+                align-items: flex-start;
+                gap: 10px;
             }
-        }
 
-        .copy-btn {
-            background: var(--light);
-            border: 1px solid var(--border);
-            padding: 8px 15px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            margin-left: 10px;
-        }
+            .playlist-actions {
+                width: 100%;
+            }
 
-        .copy-btn:hover {
-            background: var(--primary);
-            color: white;
+            .btn {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <div class="logo">
-                <i class="fas fa-tv"></i>
-                <h1>IPTV Channel Manager</h1>
-            </div>
-            <div class="server-status">
-                <span class="status-dot"></span>
-                <span id="serverStatus">Connecting to API...</span>
-            </div>
-        </header>
-
-        <div class="main-content">
-            <nav class="sidebar">
-                <h2>Navigation</h2>
-                <ul class="nav-menu">
-                    <li class="nav-item"><a href="#" class="nav-link active" onclick="showSection('dashboard')"><i class="fas fa-home"></i> Dashboard</a></li>
-                    <li class="nav-item"><a href="#" class="nav-link" onclick="showSection('channels')"><i class="fas fa-list"></i> All Channels</a></li>
-                    <li class="nav-item"><a href="#" class="nav-link" onclick="showSection('addChannel')"><i class="fas fa-plus-circle"></i> Add Channel</a></li>
-                    <li class="nav-item"><a href="#" class="nav-link" onclick="showSection('bulkImport')"><i class="fas fa-file-import"></i> Bulk Import</a></li>
-                    <li class="nav-item"><a href="#" class="nav-link" onclick="showSection('playlist')"><i class="fas fa-file-alt"></i> Generate M3U</a></li>
-                    <li class="nav-item"><a href="#" class="nav-link" onclick="showSection('stats')"><i class="fas fa-chart-bar"></i> Statistics</a></li>
-                    <li class="nav-item"><a href="#" class="nav-link" onclick="showSection('deleteAll')"><i class="fas fa-trash"></i> Delete All</a></li>
-                </ul>
-            </nav>
-
-            <main class="content-area">
-                <!-- Alert Messages -->
-                <div id="alertMessage" class="alert"></div>
-
-                <!-- Dashboard Section -->
-                <section id="dashboard" class="section active">
-                    <div class="section-header">
-                        <h2>Dashboard</h2>
-                        <button class="btn btn-primary" onclick="refreshStats()">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    <p>Welcome to the IPTV Channel Manager. Use this dashboard to manage your streaming channels.</p>
-                    
-                    <div class="stats-cards" id="dashboardStats">
-                        <!-- Stats will be loaded here -->
-                    </div>
-
-                    <div style="margin-top: 40px;">
-                        <h3>Quick Actions</h3>
-                        <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
-                            <button class="btn btn-success" onclick="showSection('addChannel')">
-                                <i class="fas fa-plus"></i> Add New Channel
-                            </button>
-                            <button class="btn btn-primary" onclick="loadChannels()">
-                                <i class="fas fa-list"></i> View All Channels
-                            </button>
-                            <button class="btn btn-warning" onclick="generatePlaylist()">
-                                <i class="fas fa-download"></i> Download M3U
-                            </button>
-                            <button class="btn btn-primary" onclick="showSection('bulkImport')">
-                                <i class="fas fa-file-import"></i> Bulk Import
-                            </button>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- All Channels Section -->
-                <section id="channels" class="section" style="display: none;">
-                    <div class="section-header">
-                        <h2>All Channels</h2>
-                        <div>
-                            <button class="btn btn-primary" onclick="loadChannels()">
-                                <i class="fas fa-sync-alt"></i> Refresh
-                            </button>
-                            <button class="btn btn-success" onclick="showSection('addChannel')">
-                                <i class="fas fa-plus"></i> Add Channel
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <input type="text" id="searchChannel" placeholder="Search channels by name, tvgId, or group..." 
-                               onkeyup="searchChannels()" style="max-width: 300px;">
-                    </div>
-                    
-                    <div class="table-container">
-                        <table id="channelsTable">
-                            <thead>
-                                <tr>
-                                    <th>Title</th>
-                                    <th>Group</th>
-                                    <th>TVG ID</th>
-                                    <th>Status</th>
-                                    <th>DRM</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="channelsList">
-                                <!-- Channels will be loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <!-- Add/Edit Channel Section -->
-                <section id="addChannel" class="section" style="display: none;">
-                    <div class="section-header">
-                        <h2 id="formTitle">Add New Channel</h2>
-                    </div>
-                    
-                    <form id="channelForm" onsubmit="saveChannel(event)">
-                        <input type="hidden" id="channelId">
-                        
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label for="title">Channel Title *</label>
-                                <input type="text" id="title" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="tvgId">TVG ID *</label>
-                                <input type="text" id="tvgId" required>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="url">Stream URL *</label>
-                            <input type="text" id="url" required placeholder="http://example.com/stream.m3u8">
-                        </div>
-                        
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label for="groupTitle">Group/Category</label>
-                                <input type="text" id="groupTitle" value="General">
-                            </div>
-                            <div class="form-group">
-                                <label for="logo">Logo URL</label>
-                                <input type="text" id="logo" placeholder="http://example.com/logo.png">
-                            </div>
-                        </div>
-                        
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label for="cookie">Cookie (if required)</label>
-                                <input type="text" id="cookie" placeholder="session=abc123">
-                            </div>
-                            <div class="form-group">
-                                <label for="key">DRM ClearKey</label>
-                                <input type="text" id="key" placeholder="{key_id:key_value}">
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="isActive" checked> Active Channel
-                            </label>
-                        </div>
-                        
-                        <div style="display: flex; gap: 15px; margin-top: 30px;">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save"></i> Save Channel
-                            </button>
-                            <button type="button" class="btn" onclick="resetForm()" style="background: var(--light);">
-                                <i class="fas fa-redo"></i> Reset
-                            </button>
-                            <button type="button" class="btn btn-warning" onclick="showSection('channels')">
-                                <i class="fas fa-arrow-left"></i> Back to List
-                            </button>
-                        </div>
-                    </form>
-                </section>
-
-                <!-- Bulk Import Section -->
-                <section id="bulkImport" class="section" style="display: none;">
-                    <div class="section-header">
-                        <h2>Bulk Import from M3U</h2>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="m3uContent">Paste M3U Playlist Content</label>
-                        <textarea id="m3uContent" rows="10" placeholder="#EXTM3U
-#EXTINF:-1 tvg-id=&quot;channel1&quot; group-title=&quot;News&quot; tvg-logo=&quot;http://example.com/logo.png&quot;,CNN
-http://example.com/stream1.m3u8
-
-#EXTINF:-1 tvg-id=&quot;channel2&quot; group-title=&quot;Sports&quot; tvg-logo=&quot;http://example.com/logo2.png&quot;,ESPN
-http://example.com/stream2.m3u8"></textarea>
-                    </div>
-                    
-                    <div style="display: flex; gap: 15px; margin-top: 20px;">
-                        <button class="btn btn-primary" onclick="importM3U()">
-                            <i class="fas fa-file-import"></i> Import Channels
-                        </button>
-                        <button class="btn" onclick="showSection('channels')" style="background: var(--light);">
-                            <i class="fas fa-arrow-left"></i> Back
-                        </button>
-                    </div>
-                    
-                    <div id="importResults" style="margin-top: 30px;"></div>
-                </section>
-
-                <!-- Generate M3U Section -->
-                <section id="playlist" class="section" style="display: none;">
-                    <div class="section-header">
-                        <h2>Generate M3U Playlist</h2>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="playlistGroup">Filter by Group (optional)</label>
-                        <select id="playlistGroup">
-                            <option value="">All Groups</option>
-                        </select>
-                    </div>
-                    
-                    <div style="display: flex; gap: 15px; margin-top: 20px;">
-                        <button class="btn btn-primary" onclick="generatePlaylist()">
-                            <i class="fas fa-download"></i> Download M3U
-                        </button>
-                        <button class="btn btn-success" onclick="previewPlaylist()">
-                            <i class="fas fa-eye"></i> Preview M3U
-                        </button>
-                    </div>
-                    
-                    <div id="playlistPreview" class="m3u-preview" style="display: none;">
-                        <!-- M3U preview will appear here -->
-                    </div>
-                </section>
-
-                <!-- Statistics Section -->
-                <section id="stats" class="section" style="display: none;">
-                    <div class="section-header">
-                        <h2>Statistics</h2>
-                        <button class="btn btn-primary" onclick="loadStatistics()">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                    
-                    <div id="statisticsContent">
-                        <!-- Stats will be loaded here -->
-                    </div>
-                </section>
-
-                <!-- Delete All Section -->
-                <section id="deleteAll" class="section" style="display: none;">
-                    <div class="section-header">
-                        <h2>Delete All Channels</h2>
-                    </div>
-                    
-                    <div style="text-align: center; padding: 40px;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 4rem; color: var(--danger); margin-bottom: 20px;"></i>
-                        <h3 style="color: var(--danger); margin-bottom: 15px;">⚠️ DANGER ZONE ⚠️</h3>
-                        <p style="margin-bottom: 25px; font-size: 1.1rem;">
-                            This action will permanently delete <strong>ALL</strong> channels from the database.<br>
-                            This cannot be undone!
-                        </p>
-                        
-                        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 30px;">
-                            <button class="btn btn-danger" onclick="confirmDeleteAll()" style="padding: 15px 30px;">
-                                <i class="fas fa-trash"></i> DELETE ALL CHANNELS
-                            </button>
-                            <button class="btn btn-primary" onclick="showSection('dashboard')">
-                                <i class="fas fa-arrow-left"></i> Cancel
-                            </button>
-                        </div>
-                    </div>
-                </section>
-            </main>
+        <div class="header">
+            <h1>🎬 IPTV Channel Manager</h1>
+            <p>Manage Playlist URLs & Channels with Auto-Sync</p>
         </div>
 
-        <div class="footer">
-            <p>IPTV Channel Manager API v2.0 | All endpoints are publicly accessible</p>
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('playlists')">📋 Playlist URLs</button>
+            <button class="tab" onclick="showTab('channels')">📺 Channels</button>
+            <button class="tab" onclick="showTab('stats')">📊 Statistics</button>
         </div>
-    </div>
 
-    <!-- Edit Channel Modal -->
-    <div id="editModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Edit Channel</h3>
-                <button class="close-modal" onclick="closeModal()">&times;</button>
+        <!-- PLAYLISTS TAB -->
+        <div id="playlists-tab" class="tab-content active">
+            <h2>Playlist URL Management</h2>
+            <p style="color: #666; margin-bottom: 20px;">Add M3U playlist URLs that will automatically sync channels to your database.</p>
+
+            <div class="playlist-form">
+                <h3>Add New Playlist URL</h3>
+                <div class="form-group">
+                    <label>Playlist Name *</label>
+                    <input type="text" id="playlist-name" placeholder="e.g., My IPTV Playlist">
+                </div>
+                <div class="form-group">
+                    <label>Playlist URL * (M3U Format)</label>
+                    <input type="url" id="playlist-url" placeholder="https://example.com/playlist.m3u">
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="auto-sync" checked>
+                    <label for="auto-sync" style="margin: 0;">Enable Auto-Sync</label>
+                </div>
+                <div class="form-group">
+                    <label>Sync Interval (minutes)</label>
+                    <input type="number" id="sync-interval" value="60" min="5">
+                </div>
+                <button class="btn btn-primary" onclick="addPlaylist()">➕ Add Playlist</button>
             </div>
-            <div id="editModalContent">
-                <!-- Edit form will be loaded here -->
+
+            <div id="playlist-alert"></div>
+
+            <div class="playlist-list">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3>Your Playlists</h3>
+                    <button class="btn btn-info" onclick="syncAllPlaylists()">🔄 Sync All</button>
+                </div>
+                <div id="playlists-container">
+                    <div class="loading">Loading playlists...</div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- View Channel Modal -->
-    <div id="viewModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Channel Details</h3>
-                <button class="close-modal" onclick="closeModal()">&times;</button>
+        <!-- CHANNELS TAB -->
+        <div id="channels-tab" class="tab-content">
+            <h2>Channel List</h2>
+            <div style="margin: 20px 0;">
+                <input type="text" id="channel-search" placeholder="🔍 Search channels..." 
+                       style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px;"
+                       onkeyup="searchChannels()">
             </div>
-            <div id="viewModalContent">
-                <!-- Channel details will be loaded here -->
+            <div id="channels-container">
+                <div class="loading">Loading channels...</div>
+            </div>
+        </div>
+
+        <!-- STATS TAB -->
+        <div id="stats-tab" class="tab-content">
+            <h2>Statistics</h2>
+            <div id="stats-container">
+                <div class="loading">Loading statistics...</div>
             </div>
         </div>
     </div>
 
     <script>
-        const API_BASE_URL = window.location.origin;
-        let allChannels = [];
-        let currentEditId = null;
+        const API_URL = window.location.origin;
 
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            checkServerStatus();
-            loadDashboardStats();
-            loadGroups();
-        });
+        // Show/Hide Tabs
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
 
-        // Navigation functions
-        function showSection(sectionId) {
-            // Hide all sections
-            document.querySelectorAll('.section').forEach(section => {
-                section.style.display = 'none';
-            });
-            
-            // Show selected section
-            document.getElementById(sectionId).style.display = 'block';
-            
-            // Update active nav link
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('active');
-            });
-            
-            // Load data for the section
-            switch(sectionId) {
-                case 'dashboard':
-                    loadDashboardStats();
-                    break;
-                case 'channels':
-                    loadChannels();
-                    break;
-                case 'stats':
-                    loadStatistics();
-                    break;
-                case 'playlist':
-                    loadGroups('playlistGroup');
-                    break;
-            }
+            if (tabName === 'playlists') loadPlaylists();
+            if (tabName === 'channels') loadChannels();
+            if (tabName === 'stats') loadStats();
         }
 
-        // Check server status
-        async function checkServerStatus() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/health`);
-                const data = await response.json();
-                
-                if (data.status === 'healthy') {
-                    document.getElementById('serverStatus').innerHTML = 
-                        `<span class="status-dot"></span> Server Online | MongoDB: ${data.mongodb}`;
-                }
-            } catch (error) {
-                document.getElementById('serverStatus').innerHTML = 
-                    `<span style="color: red">●</span> Server Offline`;
-                showAlert('Cannot connect to server. Make sure the API is running.', 'error');
-            }
-        }
-
-        // Alert functions
+        // Show Alert
         function showAlert(message, type = 'success') {
-            const alert = document.getElementById('alertMessage');
-            alert.textContent = message;
-            alert.className = `alert alert-${type}`;
-            alert.style.display = 'block';
-            
-            setTimeout(() => {
-                alert.style.display = 'none';
-            }, 5000);
+            const alertDiv = document.getElementById('playlist-alert');
+            alertDiv.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            setTimeout(() => alertDiv.innerHTML = '', 5000);
         }
 
-        // Dashboard functions
-        async function loadDashboardStats() {
-            try {
-                const [channelsRes, statsRes] = await Promise.all([
-                    fetch(`${API_BASE_URL}/api/channels`),
-                    fetch(`${API_BASE_URL}/api/stats`)
-                ]);
-                
-                const channels = await channelsRes.json();
-                const stats = await statsRes.json();
-                
-                if (channels.success && stats.success) {
-                    const statsHtml = `
-                        <div class="stat-card">
-                            <div class="stat-number">${channels.count || 0}</div>
-                            <div class="stat-label">Total Channels</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">${stats.data.activeChannels || 0}</div>
-                            <div class="stat-label">Active Channels</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">${stats.data.totalGroups || 0}</div>
-                            <div class="stat-label">Groups</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-number">${stats.data.channelsWithDRM || 0}</div>
-                            <div class="stat-label">DRM Protected</div>
-                        </div>
-                    `;
-                    
-                    document.getElementById('dashboardStats').innerHTML = statsHtml;
-                }
-            } catch (error) {
-                console.error('Error loading dashboard stats:', error);
-            }
-        }
+        // Add Playlist
+        async function addPlaylist() {
+            const name = document.getElementById('playlist-name').value.trim();
+            const url = document.getElementById('playlist-url').value.trim();
+            const autoSync = document.getElementById('auto-sync').checked;
+            const syncInterval = parseInt(document.getElementById('sync-interval').value) * 60000;
 
-        // Channel functions
-        async function loadChannels() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/channels`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    allChannels = result.data;
-                    renderChannelsTable(allChannels);
-                }
-            } catch (error) {
-                console.error('Error loading channels:', error);
-                showAlert('Error loading channels', 'error');
-            }
-        }
-
-        function renderChannelsTable(channels) {
-            const tbody = document.getElementById('channelsList');
-            tbody.innerHTML = '';
-            
-            if (channels.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 40px;">
-                            No channels found. <a href="#" onclick="showSection('addChannel')" style="color: var(--primary);">Add your first channel</a>
-                        </td>
-                    </tr>
-                `;
+            if (!name || !url) {
+                showAlert('Please fill in all required fields', 'error');
                 return;
             }
-            
-            channels.forEach(channel => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>
-                        <strong>${channel.title}</strong><br>
-                        <small style="color: var(--gray);">${channel.logo ? 'Has logo' : 'No logo'}</small>
-                    </td>
-                    <td><span class="badge badge-info">${channel.groupTitle}</span></td>
-                    <td><code>${channel.tvgId}</code></td>
-                    <td>
-                        <span class="badge ${channel.isActive ? 'badge-success' : 'badge-danger'}">
-                            ${channel.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                    </td>
-                    <td>
-                        ${channel.key ? '<span class="badge badge-success">DRM</span>' : '<span class="badge">No DRM</span>'}
-                    </td>
-                    <td>
-                        <div class="action-buttons">
-                            <button class="action-btn view" onclick="viewChannel('${channel._id}')" title="View">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                            <button class="action-btn edit" onclick="editChannel('${channel._id}')" title="Edit">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="action-btn delete" onclick="deleteChannel('${channel._id}', '${channel.title}')" title="Delete">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
 
-        function searchChannels() {
-            const searchTerm = document.getElementById('searchChannel').value.toLowerCase();
-            if (!searchTerm) {
-                renderChannelsTable(allChannels);
-                return;
-            }
-            
-            const filtered = allChannels.filter(channel => 
-                channel.title.toLowerCase().includes(searchTerm) ||
-                channel.tvgId.toLowerCase().includes(searchTerm) ||
-                channel.groupTitle.toLowerCase().includes(searchTerm)
-            );
-            
-            renderChannelsTable(filtered);
-        }
-
-        // Save/Update channel
-        async function saveChannel(event) {
-            event.preventDefault();
-            
-            const channelId = document.getElementById('channelId').value;
-            const isEdit = !!channelId;
-            
-            const channelData = {
-                title: document.getElementById('title').value,
-                tvgId: document.getElementById('tvgId').value,
-                url: document.getElementById('url').value,
-                groupTitle: document.getElementById('groupTitle').value,
-                logo: document.getElementById('logo').value,
-                cookie: document.getElementById('cookie').value,
-                key: document.getElementById('key').value,
-                isActive: document.getElementById('isActive').checked,
-                licenseType: 'clearkey'
-            };
-            
             try {
-                const url = isEdit ? 
-                    `${API_BASE_URL}/api/channels/${channelId}` :
-                    `${API_BASE_URL}/api/channels`;
-                
-                const method = isEdit ? 'PUT' : 'POST';
-                
-                const response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(channelData)
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showAlert(`Channel ${isEdit ? 'updated' : 'added'} successfully!`);
-                    resetForm();
-                    loadChannels();
-                    loadDashboardStats();
-                    showSection('channels');
-                } else {
-                    showAlert(result.message, 'error');
-                }
-            } catch (error) {
-                console.error('Error saving channel:', error);
-                showAlert('Error saving channel', 'error');
-            }
-        }
-
-        function resetForm() {
-            document.getElementById('channelForm').reset();
-            document.getElementById('channelId').value = '';
-            document.getElementById('formTitle').textContent = 'Add New Channel';
-            document.getElementById('isActive').checked = true;
-        }
-
-        // Edit channel
-        async function editChannel(id) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/channels/${id}`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    const channel = result.data;
-                    currentEditId = id;
-                    
-                    document.getElementById('channelId').value = id;
-                    document.getElementById('title').value = channel.title;
-                    document.getElementById('tvgId').value = channel.tvgId;
-                    document.getElementById('url').value = channel.url;
-                    document.getElementById('groupTitle').value = channel.groupTitle;
-                    document.getElementById('logo').value = channel.logo;
-                    document.getElementById('cookie').value = channel.cookie || '';
-                    document.getElementById('key').value = channel.key || '';
-                    document.getElementById('isActive').checked = channel.isActive;
-                    document.getElementById('formTitle').textContent = 'Edit Channel';
-                    
-                    showSection('addChannel');
-                }
-            } catch (error) {
-                console.error('Error loading channel for edit:', error);
-                showAlert('Error loading channel', 'error');
-            }
-        }
-
-        // View channel details
-        async function viewChannel(id) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/channels/${id}`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    const channel = result.data;
-                    const modalContent = document.getElementById('viewModalContent');
-                    
-                    modalContent.innerHTML = `
-                        <div style="margin-bottom: 20px;">
-                            <h4 style="color: var(--primary); margin-bottom: 15px;">${channel.title}</h4>
-                            <div style="background: var(--light); padding: 15px; border-radius: 8px;">
-                                <p><strong>TVG ID:</strong> <code>${channel.tvgId}</code></p>
-                                <p><strong>Group:</strong> <span class="badge badge-info">${channel.groupTitle}</span></p>
-                                <p><strong>Status:</strong> 
-                                    <span class="badge ${channel.isActive ? 'badge-success' : 'badge-danger'}">
-                                        ${channel.isActive ? 'Active' : 'Inactive'}
-                                    </span>
-                                </p>
-                                <p><strong>License Type:</strong> ${channel.licenseType}</p>
-                                ${channel.logo ? `<p><strong>Logo:</strong> <a href="${channel.logo}" target="_blank">${channel.logo}</a></p>` : ''}
-                            </div>
-                        </div>
-                        
-                        <div style="margin-bottom: 20px;">
-                            <h5>Stream Information</h5>
-                            <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all;">
-                                <p><strong>URL:</strong><br>${channel.url}</p>
-                                ${channel.cookie ? `<p><strong>Cookie:</strong><br>${channel.cookie}</p>` : ''}
-                                ${channel.key ? `<p><strong>DRM Key:</strong><br>${channel.key}</p>` : ''}
-                            </div>
-                        </div>
-                        
-                        <div style="display: flex; gap: 10px; margin-top: 20px;">
-                            <button class="btn btn-primary" onclick="copyToClipboard('${channel.url}')">
-                                <i class="fas fa-copy"></i> Copy URL
-                            </button>
-                            <button class="btn btn-success" onclick="editChannel('${channel._id}'); closeModal();">
-                                <i class="fas fa-edit"></i> Edit Channel
-                            </button>
-                        </div>
-                    `;
-                    
-                    document.getElementById('viewModal').style.display = 'flex';
-                }
-            } catch (error) {
-                console.error('Error viewing channel:', error);
-                showAlert('Error loading channel details', 'error');
-            }
-        }
-
-        // Delete channel
-        async function deleteChannel(id, title) {
-            if (!confirm(`Are you sure you want to delete "${title}"?`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/channels/${id}`, {
-                    method: 'DELETE'
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showAlert(`Channel "${title}" deleted successfully!`);
-                    loadChannels();
-                    loadDashboardStats();
-                } else {
-                    showAlert(result.message, 'error');
-                }
-            } catch (error) {
-                console.error('Error deleting channel:', error);
-                showAlert('Error deleting channel', 'error');
-            }
-        }
-
-        // Delete all channels
-        async function confirmDeleteAll() {
-            if (!confirm('⚠️ FINAL WARNING ⚠️\n\nThis will delete ALL channels permanently!\nThis action cannot be undone!\n\nType "DELETE ALL" to confirm:')) {
-                return;
-            }
-            
-            const userInput = prompt('Please type "DELETE ALL" to confirm:');
-            if (userInput !== 'DELETE ALL') {
-                showAlert('Deletion cancelled', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/channels`, {
-                    method: 'DELETE'
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showAlert(`Successfully deleted ${result.deletedCount} channels!`, 'success');
-                    loadChannels();
-                    loadDashboardStats();
-                    showSection('dashboard');
-                } else {
-                    showAlert(result.message, 'error');
-                }
-            } catch (error) {
-                console.error('Error deleting all channels:', error);
-                showAlert('Error deleting channels', 'error');
-            }
-        }
-
-        // Bulk import
-        async function importM3U() {
-            const m3uContent = document.getElementById('m3uContent').value;
-            
-            if (!m3uContent) {
-                showAlert('Please paste M3U content first', 'error');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/channels/bulk`, {
+                const response = await fetch(`${API_URL}/api/playlists`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ m3uContent })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, url, autoSync, syncInterval })
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.success) {
-                    const resultsDiv = document.getElementById('importResults');
-                    resultsDiv.innerHTML = `
-                        <div style="background: #d1f7c4; padding: 20px; border-radius: 8px; border: 1px solid #a5d6a7;">
-                            <h4 style="color: #2e7d32; margin-bottom: 15px;">Import Results</h4>
-                            <p><strong>Total processed:</strong> ${result.results.total}</p>
-                            <p><strong>Added:</strong> ${result.results.added}</p>
-                            <p><strong>Updated:</strong> ${result.results.updated}</p>
-                            <p><strong>Errors:</strong> ${result.results.errors}</p>
-                        </div>
-                    `;
-                    
-                    showAlert('Bulk import completed!');
-                    loadChannels();
-                    loadDashboardStats();
+                    showAlert(`✅ Playlist added successfully! ${result.syncResults ? `Synced ${result.syncResults.added + result.syncResults.updated} channels.` : ''}`, 'success');
+                    document.getElementById('playlist-name').value = '';
+                    document.getElementById('playlist-url').value = '';
+                    loadPlaylists();
                 } else {
-                    showAlert(result.message, 'error');
+                    showAlert(`❌ ${result.message}`, 'error');
                 }
             } catch (error) {
-                console.error('Error importing M3U:', error);
-                showAlert('Error importing channels', 'error');
+                showAlert(`❌ Error: ${error.message}`, 'error');
             }
         }
 
-        // Playlist functions
-        async function generatePlaylist() {
-            const group = document.getElementById('playlistGroup').value;
-            let url = `${API_BASE_URL}/api/playlist.m3u`;
-            
-            if (group) {
-                url += `?groupTitle=${encodeURIComponent(group)}`;
-            }
-            
-            // Create a temporary link to trigger download
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'playlist.m3u';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            showAlert('M3U playlist downloaded!');
-        }
+        // Load Playlists
+        async function loadPlaylists() {
+            const container = document.getElementById('playlists-container');
+            container.innerHTML = '<div class="loading">Loading playlists...</div>';
 
-        async function previewPlaylist() {
-            const group = document.getElementById('playlistGroup').value;
-            let url = `${API_BASE_URL}/api/playlist.m3u`;
-            
-            if (group) {
-                url += `?groupTitle=${encodeURIComponent(group)}`;
-            }
-            
             try {
-                const response = await fetch(url);
-                const m3uContent = await response.text();
-                
-                const previewDiv = document.getElementById('playlistPreview');
-                previewDiv.textContent = m3uContent;
-                previewDiv.style.display = 'block';
-            } catch (error) {
-                console.error('Error previewing playlist:', error);
-                showAlert('Error generating playlist preview', 'error');
-            }
-        }
-
-        // Statistics
-        async function loadStatistics() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/stats`);
+                const response = await fetch(`${API_URL}/api/playlists`);
                 const result = await response.json();
+
+                if (result.success && result.data.length > 0) {
+                    container.innerHTML = result.data.map(playlist => `
+                        <div class="playlist-card">
+                            <div class="playlist-header">
+                                <div class="playlist-name">${playlist.name}</div>
+                                <span class="playlist-status status-${playlist.lastSyncStatus}">${playlist.lastSyncStatus.toUpperCase()}</span>
+                            </div>
+                            <div class="playlist-url">🔗 ${playlist.url}</div>
+                            <div class="playlist-info">
+                                <span>📺 ${playlist.channelCount} channels</span>
+                                <span>🔄 Auto-Sync: ${playlist.autoSync ? 'ON' : 'OFF'}</span>
+                                <span>⏱️ Interval: ${Math.round(playlist.syncInterval / 60000)}min</span>
+                                <span>🕒 Last Sync: ${playlist.lastSyncAt ? new Date(playlist.lastSyncAt).toLocaleString() : 'Never'}</span>
+                            </div>
+                            ${playlist.lastSyncMessage ? `<div style="color: #666; font-size: 13px; margin-top: 10px;">💬 ${playlist.lastSyncMessage}</div>` : ''}
+                            <div class="playlist-actions">
+                                <button class="btn btn-success" onclick="syncPlaylist('${playlist._id}')">🔄 Sync Now</button>
+                                <button class="btn btn-info" onclick="viewPlaylistChannels('${playlist._id}')">👀 View Channels</button>
+                                <button class="btn btn-danger" onclick="deletePlaylist('${playlist._id}', '${playlist.name}')">🗑️ Delete</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<div class="alert alert-info">No playlists added yet. Add your first playlist above!</div>';
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-error">Error loading playlists: ${error.message}</div>`;
+            }
+        }
+
+        // Sync Playlist
+        async function syncPlaylist(id) {
+            showAlert('⏳ Syncing playlist...', 'info');
+            try {
+                const response = await fetch(`${API_URL}/api/playlists/${id}/sync`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert(`✅ Synced! Added: ${result.results.added}, Updated: ${result.results.updated}, Errors: ${result.results.errors}`, 'success');
+                    loadPlaylists();
+                } else {
+                    showAlert(`❌ ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Sync All Playlists
+        async function syncAllPlaylists() {
+            showAlert('⏳ Syncing all playlists...', 'info');
+            try {
+                const response = await fetch(`${API_URL}/api/playlists/sync-all`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert(`✅ All playlists synced! ${result.results.length} playlists processed.`, 'success');
+                    loadPlaylists();
+                } else {
+                    showAlert(`❌ ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Delete Playlist
+        async function deletePlaylist(id, name) {
+            if (!confirm(`Are you sure you want to delete "${name}"?\n\nChannels from this playlist will remain in the database.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/playlists/${id}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('✅ Playlist deleted successfully!', 'success');
+                    loadPlaylists();
+                } else {
+                    showAlert(`❌ ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // View Playlist Channels
+        async function viewPlaylistChannels(playlistId) {
+            showTab('channels');
+            document.querySelectorAll('.tab')[1].click();
+            
+            const container = document.getElementById('channels-container');
+            container.innerHTML = '<div class="loading">Loading channels...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/channels?playlistId=${playlistId}`);
+                const result = await response.json();
+
+                if (result.success && result.data.length > 0) {
+                    container.innerHTML = `
+                        <div class="alert alert-info">Showing ${result.count} channels from this playlist</div>
+                        ${result.data.map(channel => `
+                            <div class="playlist-card">
+                                <div class="playlist-header">
+                                    <div class="playlist-name">${channel.logo ? `<img src="${channel.logo}" width="40" style="vertical-align: middle; margin-right: 10px;">` : ''}${channel.title}</div>
+                                </div>
+                                <div class="playlist-info">
+                                    <span>📂 ${channel.groupTitle}</span>
+                                    <span>🆔 ${channel.tvgId}</span>
+                                    <span>${channel.hasKey ? '🔐 DRM Protected' : '🔓 No DRM'}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    `;
+                } else {
+                    container.innerHTML = '<div class="alert alert-info">No channels found for this playlist.</div>';
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Load Channels
+        async function loadChannels() {
+            const container = document.getElementById('channels-container');
+            container.innerHTML = '<div class="loading">Loading channels...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/channels`);
+                const result = await response.json();
+
+                if (result.success && result.data.length > 0) {
+                    container.innerHTML = result.data.map(channel => `
+                        <div class="playlist-card">
+                            <div class="playlist-header">
+                                <div class="playlist-name">${channel.logo ? `<img src="${channel.logo}" width="40" style="vertical-align: middle; margin-right: 10px;">` : ''}${channel.title}</div>
+                            </div>
+                            <div class="playlist-info">
+                                <span>📂 ${channel.groupTitle}</span>
+                                <span>🆔 ${channel.tvgId}</span>
+                                <span>${channel.key ? '🔐 DRM Protected' : '🔓 No DRM'}</span>
+                                <span>${channel.cookie ? '🍪 Has Cookie' : ''}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<div class="alert alert-info">No channels found. Add playlists to get started!</div>';
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Search Channels
+        let searchTimeout;
+        function searchChannels() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(async () => {
+                const query = document.getElementById('channel-search').value;
+                const container = document.getElementById('channels-container');
                 
+                try {
+                    const response = await fetch(`${API_URL}/api/channels?search=${query}`);
+                    const result = await response.json();
+
+                    if (result.success && result.data.length > 0) {
+                        container.innerHTML = result.data.map(channel => `
+                            <div class="playlist-card">
+                                <div class="playlist-header">
+                                    <div class="playlist-name">${channel.logo ? `<img src="${channel.logo}" width="40" style="vertical-align: middle; margin-right: 10px;">` : ''}${channel.title}</div>
+                                </div>
+                                <div class="playlist-info">
+                                    <span>📂 ${channel.groupTitle}</span>
+                                    <span>🆔 ${channel.tvgId}</span>
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        container.innerHTML = '<div class="alert alert-info">No channels found.</div>';
+                    }
+                } catch (error) {
+                    container.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
+                }
+            }, 300);
+        }
+
+        // Load Statistics
+        async function loadStats() {
+            const container = document.getElementById('stats-container');
+            container.innerHTML = '<div class="loading">Loading statistics...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/stats`);
+                const result = await response.json();
+
                 if (result.success) {
                     const stats = result.data;
-                    const groupsList = stats.groups.map(group => `<li>${group}</li>`).join('');
-                    
-                    document.getElementById('statisticsContent').innerHTML = `
-                        <div class="stats-cards">
+                    container.innerHTML = `
+                        <div class="stats-grid">
                             <div class="stat-card">
-                                <div class="stat-number">${stats.totalChannels}</div>
+                                <div class="stat-value">${stats.totalPlaylists}</div>
+                                <div class="stat-label">Total Playlists</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.activePlaylists}</div>
+                                <div class="stat-label">Active Playlists</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalChannels}</div>
                                 <div class="stat-label">Total Channels</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-number">${stats.activeChannels}</div>
+                                <div class="stat-value">${stats.activeChannels}</div>
                                 <div class="stat-label">Active Channels</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-number">${stats.inactiveChannels}</div>
-                                <div class="stat-label">Inactive Channels</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-number">${stats.channelsWithDRM}</div>
+                                <div class="stat-value">${stats.channelsWithDRM}</div>
                                 <div class="stat-label">DRM Protected</div>
                             </div>
-                        </div>
-                        
-                        <div style="margin-top: 40px;">
-                            <h3>Groups (${stats.totalGroups})</h3>
-                            <ul style="columns: 3; margin-top: 15px; column-gap: 30px;">
-                                ${groupsList}
-                            </ul>
+                            <div class="stat-card">
+                                <div class="stat-value">${stats.totalGroups}</div>
+                                <div class="stat-label">Categories</div>
+                            </div>
                         </div>
                     `;
                 }
             } catch (error) {
-                console.error('Error loading statistics:', error);
-                showAlert('Error loading statistics', 'error');
+                container.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
             }
         }
 
-        // Load groups for dropdown
-        async function loadGroups(dropdownId = null) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/groups`);
-                const result = await response.json();
-                
-                if (result.success && dropdownId) {
-                    const select = document.getElementById(dropdownId);
-                    select.innerHTML = '<option value="">All Groups</option>';
-                    
-                    result.data.forEach(group => {
-                        const option = document.createElement('option');
-                        option.value = group;
-                        option.textContent = group;
-                        select.appendChild(option);
-                    });
-                }
-            } catch (error) {
-                console.error('Error loading groups:', error);
-            }
-        }
-
-        // Utility functions
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                showAlert('Copied to clipboard!');
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-            });
-        }
-
-        function closeModal() {
-            document.querySelectorAll('.modal').forEach(modal => {
-                modal.style.display = 'none';
-            });
-        }
-
-        function refreshStats() {
-            loadDashboardStats();
-            showAlert('Dashboard refreshed!');
-        }
-
-        // Close modals when clicking outside
-        window.onclick = function(event) {
-            if (event.target.classList.contains('modal')) {
-                closeModal();
-            }
-        };
+        // Initialize
+        loadPlaylists();
     </script>
 </body>
 </html>
