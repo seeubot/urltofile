@@ -33,7 +33,9 @@ const channelSchema = new mongoose.Schema({
   groupTitle: { type: String, default: 'General' },
   tvgId: { type: String, required: true, unique: true },
   isActive: { type: Boolean, default: true },
-  sourcePlaylistId: { type: mongoose.Schema.Types.ObjectId, ref: 'Playlist', default: null }, // Track source
+  sourcePlaylistId: { type: mongoose.Schema.Types.ObjectId, ref: 'Playlist', default: null },
+  sourceStalkerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Stalker', default: null },
+  stalkerData: { type: Object, default: {} },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, {
@@ -47,10 +49,10 @@ const playlistSchema = new mongoose.Schema({
   name: { type: String, required: true },
   url: { type: String, required: true, unique: true },
   isActive: { type: Boolean, default: true },
-  autoSync: { type: Boolean, default: true }, // Auto-sync on changes
-  syncInterval: { type: Number, default: 3600000 }, // Sync every hour (in ms)
+  autoSync: { type: Boolean, default: true },
+  syncInterval: { type: Number, default: 3600000 },
   lastSyncAt: { type: Date, default: null },
-  lastSyncStatus: { type: String, default: 'pending' }, // pending, success, error
+  lastSyncStatus: { type: String, default: 'pending' },
   lastSyncMessage: { type: String, default: '' },
   channelCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
@@ -59,8 +61,30 @@ const playlistSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Stalker Portal Schema (Simplified - only Name, URL, MAC)
+const stalkerSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  host: { type: String, required: true }, // URL field
+  macAddress: { type: String, required: true }, // MAC Address
+  token: { type: String, default: '' },
+  tokenExpiry: { type: Date, default: null },
+  username: { type: String, default: 'stalker' }, // Default username
+  password: { type: String, default: 'stalker' }, // Default password
+  isActive: { type: Boolean, default: true },
+  totalChannels: { type: Number, default: 0 },
+  lastSyncAt: { type: Date, default: null },
+  lastSyncStatus: { type: String, default: 'pending' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, {
+  timestamps: true
+});
+
+stalkerSchema.index({ host: 1, macAddress: 1 }, { unique: true });
+
 const Channel = mongoose.model('Channel', channelSchema);
 const Playlist = mongoose.model('Playlist', playlistSchema);
+const Stalker = mongoose.model('Stalker', stalkerSchema);
 
 // ===================================
 // MIDDLEWARE
@@ -114,6 +138,7 @@ function sanitizeChannel(channel, includeSecure = false) {
     tvgId: channelObj.tvgId,
     isActive: channelObj.isActive,
     sourcePlaylistId: channelObj.sourcePlaylistId,
+    sourceStalkerId: channelObj.sourceStalkerId,
     createdAt: channelObj.createdAt,
     updatedAt: channelObj.updatedAt
   };
@@ -199,7 +224,6 @@ async function syncPlaylistChannels(playlistId) {
   try {
     console.log(`🔄 Syncing playlist: ${playlist.name} (${playlist.url})`);
     
-    // Fetch M3U content
     const m3uContent = await fetchM3UContent(playlist.url);
     const channels = parseSimplifiedM3U(m3uContent);
     
@@ -211,13 +235,11 @@ async function syncPlaylistChannels(playlistId) {
       total: channels.length
     };
 
-    // Process each channel
     for (const channelData of channels) {
       try {
         const existing = await Channel.findOne({ tvgId: channelData.tvgId });
         
         if (existing) {
-          // Update existing channel
           await Channel.findByIdAndUpdate(existing._id, {
             ...channelData,
             sourcePlaylistId: playlistId,
@@ -225,7 +247,6 @@ async function syncPlaylistChannels(playlistId) {
           });
           results.updated++;
         } else {
-          // Add new channel
           const channel = new Channel({
             ...channelData,
             sourcePlaylistId: playlistId
@@ -239,7 +260,6 @@ async function syncPlaylistChannels(playlistId) {
       }
     }
 
-    // Update playlist sync status
     await Playlist.findByIdAndUpdate(playlistId, {
       lastSyncAt: Date.now(),
       lastSyncStatus: 'success',
@@ -266,6 +286,290 @@ async function syncPlaylistChannels(playlistId) {
 }
 
 // ===================================
+// STALKER PORTAL FUNCTIONS (REAL-TIME)
+// ===================================
+
+// Token cache for real-time streaming
+const tokenCache = new Map();
+
+// Generate or refresh Stalker token (real-time enabled)
+async function getStalkerToken(stalkerId, forceRefresh = false) {
+  try {
+    const stalker = await Stalker.findById(stalkerId);
+    if (!stalker) {
+      throw new Error('Stalker portal not found');
+    }
+
+    const cacheKey = stalkerId.toString();
+    const cachedToken = tokenCache.get(cacheKey);
+    
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && cachedToken && cachedToken.expiry > Date.now() + 30000) {
+      return cachedToken.token;
+    }
+
+    console.log(`🔑 Getting fresh token for: ${stalker.name}`);
+    
+    const cleanHost = stalker.host.replace(/\/$/, '');
+    
+    // Step 1: Handshake
+    const handshakeUrl = `${cleanHost}/server/load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml`;
+    const handshakeResponse = await axios.get(handshakeUrl, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Stalker_Portal',
+        'MAC': stalker.macAddress
+      }
+    });
+
+    let token = '';
+    if (handshakeResponse.data.js && handshakeResponse.data.js.token) {
+      token = handshakeResponse.data.js.token;
+    }
+
+    if (!token) {
+      throw new Error('Failed to get token from handshake');
+    }
+
+    // Step 2: Authenticate with default credentials
+    const authUrl = `${cleanHost}/server/load.php?type=stb&action=do_auth&login=${encodeURIComponent(stalker.username)}&password=${encodeURIComponent(stalker.password)}&device_id=&device_id2=&sn=&device_type=&app=1&ver=1&model=&hw_version=&api_signature=&not_valid_token=&auth_signature=&JsHttpRequest=1-xml`;
+    
+    const authResponse = await axios.get(authUrl, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Stalker_Portal',
+        'Authorization': `Bearer ${token}`,
+        'MAC': stalker.macAddress
+      }
+    });
+
+    if (authResponse.data.js && authResponse.data.js.token) {
+      const newToken = authResponse.data.js.token;
+      const expiry = new Date(Date.now() + (23 * 60 * 60 * 1000)); // 23 hours
+      
+      // Update cache
+      tokenCache.set(cacheKey, {
+        token: newToken,
+        expiry: expiry.getTime(),
+        lastUpdated: Date.now()
+      });
+      
+      // Update database
+      await Stalker.findByIdAndUpdate(stalkerId, {
+        token: newToken,
+        tokenExpiry: expiry,
+        updatedAt: Date.now()
+      });
+      
+      return newToken;
+    }
+
+    throw new Error('Authentication failed');
+  } catch (error) {
+    console.error('Error getting Stalker token:', error.message);
+    throw error;
+  }
+}
+
+// Get channels from Stalker (lightweight for streaming)
+async function getStalkerChannelsLightweight(stalkerId) {
+  try {
+    const stalker = await Stalker.findById(stalkerId);
+    if (!stalker) {
+      throw new Error('Stalker portal not found');
+    }
+
+    const token = await getStalkerToken(stalkerId);
+    const cleanHost = stalker.host.replace(/\/$/, '');
+
+    // Get categories quickly
+    const categoriesUrl = `${cleanHost}/server/load.php?type=itv&action=get_categories&JsHttpRequest=1-xml`;
+    const catResponse = await axios.get(categoriesUrl, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Stalker_Portal',
+        'Authorization': `Bearer ${token}`,
+        'MAC': stalker.macAddress
+      }
+    });
+
+    const categories = catResponse.data.js?.data || [];
+    
+    // Get all channels at once (if supported) or just first category
+    let channels = [];
+    if (categories.length > 0) {
+      const firstCategory = categories[0];
+      const channelsUrl = `${cleanHost}/server/load.php?type=itv&action=get_ordered_list&category=${firstCategory.id}&force_ch_link_check=&JsHttpRequest=1-xml`;
+      
+      const channelsResponse = await axios.get(channelsUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Stalker_Portal',
+          'Authorization': `Bearer ${token}`,
+          'MAC': stalker.macAddress
+        }
+      });
+
+      channels = channelsResponse.data.js?.data || [];
+      
+      // Add category name
+      channels = channels.map(ch => ({
+        ...ch,
+        category_name: firstCategory.title
+      }));
+    }
+
+    return channels;
+  } catch (error) {
+    // If token expired, try once more with force refresh
+    if (error.response?.status === 401 || error.message.includes('token')) {
+      console.log('Token expired, attempting refresh...');
+      const freshToken = await getStalkerToken(stalkerId, true);
+      
+      // Retry with fresh token
+      return getStalkerChannelsLightweight(stalkerId);
+    }
+    throw error;
+  }
+}
+
+// Real-time stream proxy with auto token refresh
+async function proxyStalkerStream(originalUrl, stalkerId, channelId) {
+  try {
+    // Get fresh token for streaming
+    const token = await getStalkerToken(stalkerId);
+    
+    // Parse original URL and add/replace token
+    const urlObj = new URL(originalUrl);
+    urlObj.searchParams.set('token', token);
+    
+    // Add timestamp to prevent caching
+    urlObj.searchParams.set('_t', Date.now());
+    
+    const proxyUrl = urlObj.toString();
+    
+    // Stream with auto-retry on token expiry
+    const streamResponse = await axios({
+      method: 'GET',
+      url: proxyUrl,
+      responseType: 'stream',
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'IPTV-Stream-Proxy/1.0',
+        'Referer': originalUrl.split('?')[0]
+      }
+    });
+    
+    return streamResponse;
+  } catch (error) {
+    // If token error, retry once with fresh token
+    if (error.response?.status === 401 || error.message.includes('token')) {
+      console.log('Stream token expired, refreshing...');
+      const freshToken = await getStalkerToken(stalkerId, true);
+      
+      // Retry with fresh token
+      return proxyStalkerStream(originalUrl, stalkerId, channelId);
+    }
+    throw error;
+  }
+}
+
+// Sync Stalker channels to database
+async function syncStalkerChannels(stalkerId) {
+  const stalker = await Stalker.findById(stalkerId);
+  if (!stalker) {
+    throw new Error('Stalker portal not found');
+  }
+
+  try {
+    console.log(`🔄 Syncing Stalker portal: ${stalker.name}`);
+    
+    const channels = await getStalkerChannelsLightweight(stalkerId);
+    
+    if (!channels || channels.length === 0) {
+      throw new Error('No channels found');
+    }
+
+    const results = { 
+      added: 0, 
+      updated: 0,
+      errors: 0, 
+      total: channels.length
+    };
+
+    for (const stalkerChannel of channels) {
+      try {
+        const cleanHost = stalker.host.replace(/\/$/, '');
+        const token = await getStalkerToken(stalkerId);
+        const streamUrl = `${cleanHost}/${stalkerChannel.cmd}?token=${token}&${stalkerChannel.extra || ''}`;
+        const tvgId = `stalker_${stalker.id}_${stalkerChannel.id}`;
+        
+        const channelData = {
+          title: stalkerChannel.name || `Channel ${stalkerChannel.num}`,
+          url: streamUrl,
+          tvgId: tvgId,
+          logo: stalkerChannel.logo || '',
+          groupTitle: stalkerChannel.category_name || 'Stalker',
+          licenseType: 'clearkey',
+          key: '',
+          cookie: '',
+          isActive: true,
+          sourceStalkerId: stalker._id,
+          stalkerData: {
+            original_id: stalkerChannel.id,
+            number: stalkerChannel.num,
+            cmd: stalkerChannel.cmd,
+            category_id: stalkerChannel.category_id
+          }
+        };
+
+        // Check if exists
+        const existing = await Channel.findOne({ 
+          'stalkerData.original_id': stalkerChannel.id,
+          sourceStalkerId: stalker._id
+        });
+        
+        if (existing) {
+          await Channel.findByIdAndUpdate(existing._id, {
+            ...channelData,
+            updatedAt: Date.now()
+          });
+          results.updated++;
+        } else {
+          const channel = new Channel(channelData);
+          await channel.save();
+          results.added++;
+        }
+      } catch (error) {
+        console.error(`Error processing Stalker channel:`, error);
+        results.errors++;
+      }
+    }
+
+    await Stalker.findByIdAndUpdate(stalkerId, {
+      lastSyncAt: Date.now(),
+      lastSyncStatus: 'success',
+      totalChannels: results.added + results.updated,
+      updatedAt: Date.now()
+    });
+
+    console.log(`✅ Stalker sync completed: +${results.added} added, ${results.updated} updated`);
+    return results;
+
+  } catch (error) {
+    console.error(`❌ Stalker sync failed:`, error);
+    
+    await Stalker.findByIdAndUpdate(stalkerId, {
+      lastSyncAt: Date.now(),
+      lastSyncStatus: 'error',
+      updatedAt: Date.now()
+    });
+    
+    throw error;
+  }
+}
+
+// ===================================
 // BASIC ROUTES
 // ===================================
 
@@ -279,8 +583,511 @@ app.get('/health', (req, res) => {
     mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    api: 'IPTV Channel Manager API v2.1 with Playlist URLs'
+    api: 'IPTV Channel Manager API v2.3 with Real-time Stalker'
   });
+});
+
+// ===================================
+// STALKER PORTAL ENDPOINTS (SIMPLIFIED)
+// ===================================
+
+// Get all Stalker portals
+app.get('/api/stalker', async (req, res) => {
+  try {
+    const portals = await Stalker.find().sort({ createdAt: -1 });
+    const sanitizedPortals = portals.map(portal => ({
+      _id: portal._id,
+      name: portal.name,
+      host: portal.host,
+      macAddress: portal.macAddress,
+      isActive: portal.isActive,
+      totalChannels: portal.totalChannels,
+      lastSyncAt: portal.lastSyncAt,
+      lastSyncStatus: portal.lastSyncStatus,
+      tokenExpiry: portal.tokenExpiry,
+      createdAt: portal.createdAt
+    }));
+    
+    res.json({ 
+      success: true, 
+      count: portals.length,
+      data: sanitizedPortals
+    });
+  } catch (error) {
+    console.error('Error fetching Stalker portals:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching Stalker portals', 
+      error: error.message 
+    });
+  }
+});
+
+// Get single Stalker portal
+app.get('/api/stalker/:id', async (req, res) => {
+  try {
+    const portal = await Stalker.findById(req.params.id);
+    if (!portal) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Stalker portal not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      data: {
+        _id: portal._id,
+        name: portal.name,
+        host: portal.host,
+        macAddress: portal.macAddress,
+        isActive: portal.isActive,
+        totalChannels: portal.totalChannels,
+        lastSyncAt: portal.lastSyncAt,
+        lastSyncStatus: portal.lastSyncStatus,
+        tokenExpiry: portal.tokenExpiry,
+        createdAt: portal.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching Stalker portal:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching Stalker portal', 
+      error: error.message 
+    });
+  }
+});
+
+// Add new Stalker portal (Only Name, URL, MAC)
+app.post('/api/stalker', async (req, res) => {
+  try {
+    const { name, host, macAddress } = req.body;
+
+    if (!name || !host || !macAddress) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required fields: name, host (URL), and macAddress' 
+      });
+    }
+
+    // Validate MAC address format
+    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+    if (!macRegex.test(macAddress)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid MAC address format. Use: 00:1A:79:00:00:78' 
+      });
+    }
+
+    // Clean host URL
+    const cleanHost = host.replace(/\/$/, '');
+    
+    // Check if portal already exists
+    const existing = await Stalker.findOne({ 
+      host: cleanHost,
+      macAddress: macAddress 
+    });
+    
+    if (existing) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Stalker portal with this host and MAC already exists' 
+      });
+    }
+
+    // Create portal with default credentials
+    const portalData = {
+      name,
+      host: cleanHost,
+      macAddress,
+      username: 'stalker', // Default username
+      password: 'stalker', // Default password
+      isActive: true
+    };
+
+    const portal = new Stalker(portalData);
+    await portal.save();
+
+    // Try to get token immediately
+    try {
+      await getStalkerToken(portal._id);
+      res.status(201).json({ 
+        success: true, 
+        message: 'Stalker portal added successfully', 
+        data: {
+          _id: portal._id,
+          name: portal.name,
+          host: portal.host,
+          macAddress: portal.macAddress,
+          isActive: portal.isActive
+        }
+      });
+    } catch (authError) {
+      // Portal saved but token failed - still return success
+      res.status(201).json({ 
+        success: true, 
+        message: 'Stalker portal added but token acquisition failed. Try syncing manually.',
+        data: {
+          _id: portal._id,
+          name: portal.name,
+          host: portal.host,
+          macAddress: portal.macAddress,
+          isActive: portal.isActive
+        },
+        warning: authError.message
+      });
+    }
+  } catch (error) {
+    console.error('Error adding Stalker portal:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error adding Stalker portal', 
+      error: error.message 
+    });
+  }
+});
+
+// Update Stalker portal
+app.put('/api/stalker/:id', async (req, res) => {
+  try {
+    const updates = req.body;
+    const portalId = req.params.id;
+    
+    // Clean host if provided
+    if (updates.host) {
+      updates.host = updates.host.replace(/\/$/, '');
+    }
+    
+    updates.updatedAt = Date.now();
+
+    const portal = await Stalker.findByIdAndUpdate(
+      portalId,
+      updates,
+      { new: true, runValidators: true }
+    );
+
+    if (!portal) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Stalker portal not found' 
+      });
+    }
+
+    // Clear token cache for this portal
+    tokenCache.delete(portalId.toString());
+
+    res.json({ 
+      success: true, 
+      message: 'Stalker portal updated successfully', 
+      data: {
+        _id: portal._id,
+        name: portal.name,
+        host: portal.host,
+        macAddress: portal.macAddress,
+        isActive: portal.isActive
+      }
+    });
+  } catch (error) {
+    console.error('Error updating Stalker portal:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error updating Stalker portal', 
+      error: error.message 
+    });
+  }
+});
+
+// Delete Stalker portal
+app.delete('/api/stalker/:id', async (req, res) => {
+  try {
+    const { deleteChannels } = req.query;
+    const portal = await Stalker.findById(req.params.id);
+
+    if (!portal) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Stalker portal not found' 
+      });
+    }
+
+    // Delete associated channels if requested
+    if (deleteChannels === 'true') {
+      const deleteResult = await Channel.deleteMany({ sourceStalkerId: req.params.id });
+      console.log(`Deleted ${deleteResult.deletedCount} channels from Stalker portal ${portal.name}`);
+    } else {
+      // Just remove the portal reference
+      await Channel.updateMany(
+        { sourceStalkerId: req.params.id },
+        { $set: { sourceStalkerId: null, stalkerData: {} } }
+      );
+    }
+
+    // Clear from token cache
+    tokenCache.delete(req.params.id.toString());
+    
+    await Stalker.findByIdAndDelete(req.params.id);
+
+    res.json({ 
+      success: true, 
+      message: 'Stalker portal deleted successfully',
+      deletedPortal: portal.name
+    });
+  } catch (error) {
+    console.error('Error deleting Stalker portal:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error deleting Stalker portal', 
+      error: error.message 
+    });
+  }
+});
+
+// Sync channels from Stalker portal
+app.post('/api/stalker/:id/sync', async (req, res) => {
+  try {
+    const syncResults = await syncStalkerChannels(req.params.id);
+    res.json({ 
+      success: true, 
+      message: 'Stalker portal synced successfully',
+      results: syncResults
+    });
+  } catch (error) {
+    console.error('Error syncing Stalker portal:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error syncing Stalker portal', 
+      error: error.message 
+    });
+  }
+});
+
+// Test Stalker portal connection
+app.post('/api/stalker/test', async (req, res) => {
+  try {
+    const { host, macAddress } = req.body;
+
+    if (!host || !macAddress) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required fields: host and macAddress' 
+      });
+    }
+
+    // Test with default credentials
+    const testPortal = {
+      _id: 'test',
+      host: host.replace(/\/$/, ''),
+      macAddress: macAddress,
+      username: 'stalker',
+      password: 'stalker'
+    };
+
+    // Simulate token acquisition
+    const cleanHost = testPortal.host;
+    const handshakeUrl = `${cleanHost}/server/load.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml`;
+    
+    const handshakeResponse = await axios.get(handshakeUrl, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Stalker_Portal',
+        'MAC': macAddress
+      }
+    });
+
+    if (handshakeResponse.data.js && handshakeResponse.data.js.token) {
+      res.json({ 
+        success: true, 
+        message: 'Stalker portal connection successful',
+        data: {
+          host: host,
+          macAddress: macAddress,
+          handshake: 'successful',
+          supportsDefaultAuth: true
+        }
+      });
+    } else {
+      res.json({ 
+        success: true, 
+        message: 'Stalker portal accessible but may need custom credentials',
+        data: {
+          host: host,
+          macAddress: macAddress,
+          handshake: 'partial',
+          note: 'Portal responds but may require custom username/password'
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Stalker test connection failed:', error);
+    res.status(400).json({ 
+      success: false, 
+      message: 'Stalker portal connection failed',
+      error: error.message,
+      suggestion: 'Check if the portal URL is correct and accessible'
+    });
+  }
+});
+
+// Generate M3U playlist from Stalker portal (REAL-TIME TOKENS)
+app.get('/api/stalker/:id/playlist.m3u', async (req, res) => {
+  try {
+    const portal = await Stalker.findById(req.params.id);
+    if (!portal) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Stalker portal not found' 
+      });
+    }
+
+    // Get fresh token
+    const token = await getStalkerToken(portal._id);
+    const channels = await getStalkerChannelsLightweight(portal._id);
+    
+    if (!channels || channels.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No channels found in Stalker portal' 
+      });
+    }
+
+    // Generate M3U with REAL-TIME tokens
+    let m3u = '#EXTM3U x-tvg-url=""\n';
+    m3u += `# Playlist generated from Stalker Portal: ${portal.name}\n`;
+    m3u += `# Generated: ${new Date().toISOString()}\n`;
+    m3u += `# Total Channels: ${channels.length}\n`;
+    m3u += `# Token Expiry: ${portal.tokenExpiry}\n\n`;
+    
+    for (const channel of channels) {
+      const cleanHost = portal.host.replace(/\/$/, '');
+      const streamUrl = `${cleanHost}/${channel.cmd}?token=${token}&${channel.extra || ''}`;
+      const tvgId = `stalker_${portal._id}_${channel.id}`;
+      const groupTitle = channel.category_name || 'Stalker';
+      const logo = channel.logo || '';
+      const title = channel.name || `Channel ${channel.num}`;
+      
+      m3u += `#EXTINF:-1 tvg-id="${tvgId}" group-title="${groupTitle}" tvg-logo="${logo}",${title}\n`;
+      m3u += `${streamUrl}\n\n`;
+    }
+
+    res.setHeader('Content-Type', 'audio/x-mpegurl');
+    res.setHeader('Content-Disposition', `attachment; filename="stalker_${portal.name.replace(/\s+/g, '_')}.m3u"`);
+    res.send(m3u);
+  } catch (error) {
+    console.error('Error generating Stalker playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error generating playlist from Stalker portal', 
+      error: error.message 
+    });
+  }
+});
+
+// REAL-TIME STREAM PROXY ENDPOINT
+app.get('/api/stalker/:portalId/stream/:channelId', async (req, res) => {
+  try {
+    const { portalId, channelId } = req.params;
+    
+    // Find the channel
+    const channel = await Channel.findOne({
+      _id: channelId,
+      sourceStalkerId: portalId
+    });
+    
+    if (!channel) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Channel not found' 
+      });
+    }
+
+    // Proxy the stream with real-time token refresh
+    const streamResponse = await proxyStalkerStream(channel.url, portalId, channelId);
+    
+    // Set appropriate headers for streaming
+    res.setHeader('Content-Type', 'video/mp2t');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    // Pipe the stream to response
+    streamResponse.data.pipe(res);
+    
+    // Handle stream errors
+    streamResponse.data.on('error', (error) => {
+      console.error('Stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).end();
+      }
+    });
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      streamResponse.data.destroy();
+    });
+    
+  } catch (error) {
+    console.error('Stream proxy error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Stream proxy error', 
+        error: error.message 
+      });
+    }
+  }
+});
+
+// REAL-TIME PLAYLIST WITH PROXY LINKS
+app.get('/api/stalker/:id/playlist-proxy.m3u', async (req, res) => {
+  try {
+    const portal = await Stalker.findById(req.params.id);
+    if (!portal) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Stalker portal not found' 
+      });
+    }
+
+    // Get channels from database (already synced)
+    const channels = await Channel.find({
+      sourceStalkerId: portal._id,
+      isActive: true
+    }).sort({ title: 1 });
+
+    if (!channels || channels.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No channels found. Sync the portal first.' 
+      });
+    }
+
+    // Generate M3U with proxy URLs
+    let m3u = '#EXTM3U x-tvg-url=""\n';
+    m3u += `# Playlist from Stalker Portal: ${portal.name}\n`;
+    m3u += `# Generated: ${new Date().toISOString()}\n`;
+    m3u += `# Total Channels: ${channels.length}\n`;
+    m3u += `# Note: Streams use real-time token refresh via proxy\n\n`;
+    
+    for (const channel of channels) {
+      const proxyUrl = `http://${req.headers.host}/api/stalker/${portal._id}/stream/${channel._id}`;
+      
+      m3u += `#EXTINF:-1 tvg-id="${channel.tvgId}" group-title="${channel.groupTitle}" tvg-logo="${channel.logo}",${channel.title}\n`;
+      m3u += `${proxyUrl}\n\n`;
+    }
+
+    res.setHeader('Content-Type', 'audio/x-mpegurl');
+    res.setHeader('Content-Disposition', `attachment; filename="stalker_proxy_${portal.name.replace(/\s+/g, '_')}.m3u"`);
+    res.send(m3u);
+  } catch (error) {
+    console.error('Error generating proxy playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error generating proxy playlist', 
+      error: error.message 
+    });
+  }
 });
 
 // ===================================
@@ -343,7 +1150,6 @@ app.post('/api/playlists', async (req, res) => {
       });
     }
 
-    // Check if playlist URL already exists
     const existing = await Playlist.findOne({ url });
     if (existing) {
       return res.status(409).json({ 
@@ -356,13 +1162,12 @@ app.post('/api/playlists', async (req, res) => {
       name,
       url,
       autoSync: autoSync !== undefined ? autoSync : true,
-      syncInterval: syncInterval || 3600000 // Default 1 hour
+      syncInterval: syncInterval || 3600000
     };
 
     const playlist = new Playlist(playlistData);
     await playlist.save();
 
-    // Trigger initial sync if autoSync is enabled
     if (playlist.autoSync) {
       try {
         const syncResults = await syncPlaylistChannels(playlist._id);
@@ -431,10 +1236,10 @@ app.put('/api/playlists/:id', async (req, res) => {
   }
 });
 
-// Delete playlist (optionally keep or delete its channels)
+// Delete playlist
 app.delete('/api/playlists/:id', async (req, res) => {
   try {
-    const { deleteChannels } = req.query; // ?deleteChannels=true to delete channels too
+    const { deleteChannels } = req.query;
     const playlist = await Playlist.findById(req.params.id);
 
     if (!playlist) {
@@ -444,12 +1249,10 @@ app.delete('/api/playlists/:id', async (req, res) => {
       });
     }
 
-    // Delete associated channels if requested
     if (deleteChannels === 'true') {
       const deleteResult = await Channel.deleteMany({ sourcePlaylistId: req.params.id });
       console.log(`Deleted ${deleteResult.deletedCount} channels from playlist ${playlist.name}`);
     } else {
-      // Just remove the playlist reference from channels
       await Channel.updateMany(
         { sourcePlaylistId: req.params.id },
         { $set: { sourcePlaylistId: null } }
@@ -473,7 +1276,7 @@ app.delete('/api/playlists/:id', async (req, res) => {
   }
 });
 
-// Manually trigger sync for a specific playlist
+// Sync playlist
 app.post('/api/playlists/:id/sync', async (req, res) => {
   try {
     const syncResults = await syncPlaylistChannels(req.params.id);
@@ -492,7 +1295,7 @@ app.post('/api/playlists/:id/sync', async (req, res) => {
   }
 });
 
-// Sync all active playlists
+// Sync all playlists
 app.post('/api/playlists/sync-all', async (req, res) => {
   try {
     const playlists = await Playlist.find({ isActive: true, autoSync: true });
@@ -538,12 +1341,13 @@ app.post('/api/playlists/sync-all', async (req, res) => {
 
 app.get('/api/channels', async (req, res) => {
   try {
-    const { groupTitle, active, search, playlistId } = req.query;
+    const { groupTitle, active, search, playlistId, stalkerId } = req.query;
     let query = {};
 
     if (groupTitle) query.groupTitle = groupTitle;
     if (active !== undefined) query.isActive = active === 'true';
     if (playlistId) query.sourcePlaylistId = playlistId;
+    if (stalkerId) query.sourceStalkerId = stalkerId;
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: 'i' } },
@@ -758,6 +1562,9 @@ app.get('/api/stats', async (req, res) => {
     const withDRM = await Channel.countDocuments({ key: { $ne: '' } });
     const totalPlaylists = await Playlist.countDocuments();
     const activePlaylists = await Playlist.countDocuments({ isActive: true });
+    const totalStalker = await Stalker.countDocuments();
+    const activeStalker = await Stalker.countDocuments({ isActive: true });
+    const stalkerChannels = await Channel.countDocuments({ sourceStalkerId: { $ne: null } });
 
     res.json({
       success: true,
@@ -769,6 +1576,9 @@ app.get('/api/stats', async (req, res) => {
         channelsWithDRM: withDRM,
         totalPlaylists,
         activePlaylists,
+        totalStalkerPortals: totalStalker,
+        activeStalkerPortals: activeStalker,
+        channelsFromStalker: stalkerChannels,
         groups: groups.sort()
       }
     });
@@ -924,10 +1734,21 @@ app.use((req, res) => {
 });
 
 // ===================================
-// AUTO-SYNC SCHEDULER (Optional)
+// AUTO-SYNC & TOKEN REFRESH SCHEDULER
 // ===================================
 
-// Run auto-sync every hour for active playlists
+// Clean expired tokens from cache every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, tokenData] of tokenCache.entries()) {
+    if (tokenData.expiry < now) {
+      tokenCache.delete(key);
+      console.log(`🧹 Cleared expired token cache for: ${key}`);
+    }
+  }
+}, 60000);
+
+// Auto-sync playlists every 5 minutes
 setInterval(async () => {
   try {
     const playlists = await Playlist.find({ 
@@ -948,9 +1769,33 @@ setInterval(async () => {
       }
     }
   } catch (error) {
-    console.error('Error in auto-sync scheduler:', error);
+    console.error('Error in playlist auto-sync:', error);
   }
-}, 300000); // Check every 5 minutes
+}, 300000);
+
+// Auto-refresh Stalker tokens before expiry (every 30 minutes)
+setInterval(async () => {
+  try {
+    const stalkerPortals = await Stalker.find({ 
+      isActive: true 
+    });
+
+    for (const portal of stalkerPortals) {
+      // Refresh token if it expires in less than 1 hour
+      if (portal.tokenExpiry && (portal.tokenExpiry.getTime() - Date.now()) < 3600000) {
+        console.log(`🔄 Pre-refreshing token for Stalker: ${portal.name}`);
+        try {
+          await getStalkerToken(portal._id, true);
+          console.log(`✅ Token refreshed for: ${portal.name}`);
+        } catch (error) {
+          console.error(`Token refresh failed for ${portal.name}:`, error);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in token refresh scheduler:', error);
+  }
+}, 1800000); // 30 minutes
 
 // ===================================
 // SERVER START
@@ -959,7 +1804,8 @@ setInterval(async () => {
 const server = app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════╗
-║     🎬 IPTV CHANNEL MANAGER API v2.1                  ║
+║     🎬 IPTV CHANNEL MANAGER API v2.3                  ║
+║           WITH REAL-TIME STALKER STREAMING            ║
 ╚════════════════════════════════════════════════════════╝
 
 🚀 Server Status: RUNNING
@@ -969,33 +1815,31 @@ const server = app.listen(PORT, () => {
 
 📊 MongoDB: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}
 
-📚 API ENDPOINTS:
+📚 REAL-TIME STALKER FEATURES:
+   • Auto-token refresh during streaming
+   • Zero-delay token renewal
+   • Stream proxy with auto-retry
+   • Only 3 inputs: Name, URL, MAC
+   • Default credentials (stalker/stalker)
 
-   PLAYLIST MANAGEMENT:
-   ├─ GET    /api/playlists              List all playlists
-   ├─ POST   /api/playlists              Add playlist URL
-   ├─ GET    /api/playlists/:id          Get playlist details
-   ├─ PUT    /api/playlists/:id          Update playlist
-   ├─ DELETE /api/playlists/:id          Delete playlist
-   ├─ POST   /api/playlists/:id/sync     Sync specific playlist
-   └─ POST   /api/playlists/sync-all     Sync all playlists
+🎯 STALKER ENDPOINTS:
+   ├─ POST   /api/stalker                Add portal (Name, URL, MAC only)
+   ├─ GET    /api/stalker                List portals
+   ├─ POST   /api/stalker/:id/sync       Sync channels
+   ├─ GET    /api/stalker/:id/playlist.m3u      M3U with live tokens
+   ├─ GET    /api/stalker/:id/playlist-proxy.m3u Proxy M3U (no expiry)
+   └─ GET    /api/stalker/:portalId/stream/:channelId  Real-time stream
 
-   CHANNEL MANAGEMENT:
-   ├─ GET    /api/channels               All channels (full data)
-   ├─ GET    /api/channels/:id           Single channel
-   ├─ POST   /api/channels               Add channel
-   ├─ PUT    /api/channels/:id           Update channel
-   ├─ DELETE /api/channels/:id           Delete channel
-   ├─ DELETE /api/channels               Delete all
-   └─ POST   /api/channels/bulk          Bulk import
+📡 STREAMING FEATURES:
+   • Token auto-refresh during playback
+   • Proxy layer for uninterrupted streams
+   • Automatic retry on token expiry
+   • HTTP Live Streaming compatible
 
-   UTILITIES:
-   ├─ GET    /api/groups                 Get categories
-   ├─ GET    /api/stats                  Get statistics
-   └─ GET    /api/playlist.m3u           Export M3U
-
-🔄 Auto-sync: Enabled (checks every 5 minutes)
-🎯 Example Playlist: https://clarity-tv.vercel.app/api/jstar
+🔄 AUTO-SYNC:
+   • Playlists: Every 5 minutes
+   • Tokens: Pre-refresh 1 hour before expiry
+   • Cache cleanup: Every minute
 
 ════════════════════════════════════════════════════════
   `);
