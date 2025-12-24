@@ -310,119 +310,7 @@ app.get('/api/playlists', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Error fetching playlists', 
-      error: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
-  });
-});
-
-app.use((req, res) => {
-  res.status(404).json({ 
-    success: false, 
-    message: 'Endpoint not found',
-    path: req.path
-  });
-});
-
-// ===================================
-// AUTO-SYNC SCHEDULER
-// ===================================
-
-// Auto-sync playlists every 5 minutes
-setInterval(async () => {
-  try {
-    const playlists = await Playlist.find({ 
-      isActive: true, 
-      autoSync: true 
-    });
-
-    for (const playlist of playlists) {
-      const timeSinceLastSync = Date.now() - (playlist.lastSyncAt || 0);
-      
-      if (timeSinceLastSync >= playlist.syncInterval) {
-        console.log(`⏰ Auto-syncing playlist: ${playlist.name}`);
-        try {
-          await syncPlaylistChannels(playlist._id);
-        } catch (error) {
-          console.error(`Auto-sync failed for ${playlist.name}:`, error);
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error in playlist auto-sync:', error);
-  }
-}, 300000);
-
-// ===================================
-// SERVER START
-// ===================================
-
-const server = app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════════════════════╗
-║     🎬 IPTV CHANNEL MANAGER API v2.4                  ║
-║           WITH M3U8 FALLBACK SUPPORT                  ║
-╚════════════════════════════════════════════════════════╝
-
-🚀 Server Status: RUNNING
-📡 Port: ${PORT}
-🌍 Environment: ${process.env.NODE_ENV || 'development'}
-🌐 Base URL: http://localhost:${PORT}
-
-📊 MongoDB: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}
-
-✨ NEW FEATURES:
-   • M3U8 fallback URL support
-   • Auto-switch to M3U8 if main URL fails
-   • Both URLs stored under same channel
-   • Access manager via /rocker.html
-
-🎯 MAIN ENDPOINTS:
-   ├─ GET    /                        Server status
-   ├─ GET    /rocker.html             Channel Manager UI
-   ├─ GET    /health                  Health check
-   │
-   ├─ POST   /api/playlists           Add playlist
-   ├─ GET    /api/playlists           List playlists
-   ├─ POST   /api/playlists/:id/sync  Sync playlist
-   │
-   ├─ POST   /api/channels            Add channel (with m3u8Url)
-   ├─ GET    /api/channels            List channels
-   ├─ PUT    /api/channels/:id        Update channel
-   ├─ DELETE /api/channels/:id        Delete channel
-   │
-   └─ GET    /api/playlist.m3u        Generate M3U playlist
-
-🔄 AUTO-SYNC:
-   • Playlists: Every 5 minutes
-
-════════════════════════════════════════════════════════
-  `);
-});
-
-// ===================================
-// GRACEFUL SHUTDOWN
-// ===================================
-
-process.on('SIGTERM', () => {
-  console.log('⚠️  SIGTERM received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Server closed.');
-    mongoose.connection.close(false, () => {
-      console.log('✅ MongoDB connection closed.');
-      process.exit(0);
-    });
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('⚠️  SIGINT received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Server closed.');
-    mongoose.connection.close(false, () => {
-      console.log('✅ MongoDB connection closed.');
-      process.exit(0);
-    });
-  });
-}); error.message 
+      error: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred'
     });
   }
 });
@@ -1039,4 +927,116 @@ app.use((err, req, res, next) => {
   res.status(500).json({ 
     success: false, 
     message: 'Internal server error', 
-    error:
+    error: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
+  });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ 
+    success: false, 
+    message: 'Endpoint not found',
+    path: req.path
+  });
+});
+
+// ===================================
+// AUTO-SYNC SCHEDULER
+// ===================================
+
+// Auto-sync playlists every 5 minutes
+setInterval(async () => {
+  try {
+    const playlists = await Playlist.find({ 
+      isActive: true, 
+      autoSync: true 
+    });
+
+    for (const playlist of playlists) {
+      const timeSinceLastSync = Date.now() - (playlist.lastSyncAt || 0);
+      
+      if (timeSinceLastSync >= playlist.syncInterval) {
+        console.log(`⏰ Auto-syncing playlist: ${playlist.name}`);
+        try {
+          await syncPlaylistChannels(playlist._id);
+        } catch (error) {
+          console.error(`Auto-sync failed for ${playlist.name}:`, error);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in playlist auto-sync:', error);
+  }
+}, 300000);
+
+// ===================================
+// SERVER START
+// ===================================
+
+const server = app.listen(PORT, () => {
+  console.log(`
+╔════════════════════════════════════════════════════════╗
+║     🎬 IPTV CHANNEL MANAGER API v2.4                  ║
+║           WITH M3U8 FALLBACK SUPPORT                  ║
+╚════════════════════════════════════════════════════════╝
+
+🚀 Server Status: RUNNING
+📡 Port: ${PORT}
+🌍 Environment: ${process.env.NODE_ENV || 'development'}
+🌐 Base URL: http://localhost:${PORT}
+
+📊 MongoDB: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}
+
+✨ NEW FEATURES:
+   • M3U8 fallback URL support
+   • Auto-switch to M3U8 if main URL fails
+   • Both URLs stored under same channel
+   • Access manager via /rocker.html
+
+🎯 MAIN ENDPOINTS:
+   ├─ GET    /                        Server status
+   ├─ GET    /rocker.html             Channel Manager UI
+   ├─ GET    /health                  Health check
+   │
+   ├─ POST   /api/playlists           Add playlist
+   ├─ GET    /api/playlists           List playlists
+   ├─ POST   /api/playlists/:id/sync  Sync playlist
+   │
+   ├─ POST   /api/channels            Add channel (with m3u8Url)
+   ├─ GET    /api/channels            List channels
+   ├─ PUT    /api/channels/:id        Update channel
+   ├─ DELETE /api/channels/:id        Delete channel
+   │
+   └─ GET    /api/playlist.m3u        Generate M3U playlist
+
+🔄 AUTO-SYNC:
+   • Playlists: Every 5 minutes
+
+════════════════════════════════════════════════════════
+  `);
+});
+
+// ===================================
+// GRACEFUL SHUTDOWN
+// ===================================
+
+process.on('SIGTERM', () => {
+  console.log('⚠️  SIGTERM received. Shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed.');
+    mongoose.connection.close(false, () => {
+      console.log('✅ MongoDB connection closed.');
+      process.exit(0);
+    });
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('⚠️  SIGINT received. Shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed.');
+    mongoose.connection.close(false, () => {
+      console.log('✅ MongoDB connection closed.');
+      process.exit(0);
+    });
+  });
+});
