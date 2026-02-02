@@ -3,2563 +3,1383 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IPTV Channel Manager - Rocker Interface</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>🎬 Movies & TV Series Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <style>
         :root {
-            --primary: #3498db;
-            --secondary: #2c3e50;
-            --success: #27ae60;
-            --danger: #e74c3c;
-            --warning: #f39c12;
-            --info: #17a2b8;
-            --light: #ecf0f1;
-            --dark: #2c3e50;
-            --gray: #7f8c8d;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
         }
         
         body {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: var(--light);
-            min-height: 100vh;
+            background-color: #f5f7fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            margin-bottom: 30px;
-        }
-        
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .logo i {
-            font-size: 2.5rem;
-            color: var(--primary);
-        }
-        
-        .logo h1 {
-            font-size: 1.8rem;
-            background: linear-gradient(to right, var(--primary), #9b59b6);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-        
-        .logo span {
-            font-size: 0.9rem;
-            color: var(--gray);
-            display: block;
-            margin-top: 5px;
-        }
-        
-        .status-bar {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-        
-        .status-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: rgba(255,255,255,0.05);
-            padding: 10px 15px;
-            border-radius: 8px;
-            min-width: 120px;
-        }
-        
-        .status-value {
-            font-size: 1.5rem;
+        .navbar-brand {
             font-weight: bold;
-            color: var(--primary);
-        }
-        
-        .status-label {
-            font-size: 0.8rem;
-            color: var(--gray);
-            margin-top: 5px;
-        }
-        
-        .status-online {
-            color: var(--success);
-        }
-        
-        .status-offline {
-            color: var(--danger);
-        }
-        
-        nav {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            background: rgba(255,255,255,0.05);
-            padding: 10px;
-            border-radius: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .nav-btn {
-            padding: 12px 24px;
-            background: transparent;
-            color: var(--light);
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .nav-btn:hover {
-            background: rgba(255,255,255,0.1);
-        }
-        
-        .nav-btn.active {
-            background: var(--primary);
-            color: white;
-        }
-        
-        .content-section {
-            display: none;
-            background: rgba(255,255,255,0.05);
-            border-radius: 10px;
-            padding: 25px;
-            margin-top: 20px;
-            animation: fadeIn 0.5s;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .content-section.active {
-            display: block;
-        }
-        
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-        }
-        
-        .section-header h2 {
             font-size: 1.5rem;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
         }
         
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #2980b9;
-        }
-        
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-        
-        .btn-success:hover {
-            background: #219653;
-        }
-        
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            background: #c0392b;
-        }
-        
-        .btn-warning {
-            background: var(--warning);
-            color: white;
-        }
-        
-        .btn-warning:hover {
-            background: #d68910;
-        }
-        
-        .btn-info {
-            background: var(--info);
-            color: white;
-        }
-        
-        .btn-info:hover {
-            background: #138496;
-        }
-        
-        .table-container {
-            overflow-x: auto;
-            background: rgba(0,0,0,0.3);
-            border-radius: 8px;
-            padding: 1px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 800px;
-        }
-        
-        thead {
-            background: rgba(255,255,255,0.1);
-        }
-        
-        th {
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-            color: var(--primary);
-            border-bottom: 2px solid rgba(255,255,255,0.1);
-        }
-        
-        td {
-            padding: 15px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        
-        tr:hover {
-            background: rgba(255,255,255,0.03);
-        }
-        
-        .channel-logo {
-            width: 40px;
-            height: 40px;
-            border-radius: 6px;
-            object-fit: cover;
-            background: rgba(255,255,255,0.1);
-            padding: 5px;
-        }
-        
-        .badge {
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            display: inline-block;
-        }
-        
-        .badge-success {
-            background: rgba(39, 174, 96, 0.2);
-            color: #27ae60;
-        }
-        
-        .badge-danger {
-            background: rgba(231, 76, 60, 0.2);
-            color: #e74c3c;
-        }
-        
-        .badge-info {
-            background: rgba(23, 162, 184, 0.2);
-            color: #17a2b8;
-        }
-        
-        .badge-warning {
-            background: rgba(243, 156, 18, 0.2);
-            color: #f39c12;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .action-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 6px;
-            border: none;
-            background: rgba(255,255,255,0.1);
-            color: var(--light);
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .action-btn:hover {
-            background: var(--primary);
-            color: white;
-        }
-        
-        .action-btn.delete:hover {
-            background: var(--danger);
-        }
-        
-        .action-btn.edit:hover {
-            background: var(--warning);
-        }
-        
-        .action-btn.play:hover {
-            background: var(--success);
-        }
-        
-        .search-bar {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        
-        .search-input {
-            flex: 1;
-            min-width: 300px;
-            padding: 12px 15px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 6px;
-            color: white;
-            font-size: 1rem;
-        }
-        
-        .search-input::placeholder {
-            color: rgba(255,255,255,0.5);
-        }
-        
-        .filter-select {
-            padding: 12px 15px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 6px;
-            color: white;
-            font-size: 1rem;
-            min-width: 150px;
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-            animation: fadeIn 0.3s;
-        }
-        
-        .modal.active {
-            display: flex;
-        }
-        
-        .modal-content {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            border-radius: 12px;
-            padding: 30px;
-            width: 90%;
-            max-width: 800px;
-            max-height: 90vh;
-            overflow-y: auto;
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
-        
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-        }
-        
-        .modal-header h3 {
-            font-size: 1.5rem;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .close-modal {
-            background: transparent;
-            border: none;
-            color: var(--light);
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: color 0.3s;
-        }
-        
-        .close-modal:hover {
-            color: var(--danger);
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-row {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .form-col {
-            flex: 1;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--light);
-            font-weight: 500;
-        }
-        
-        .form-input, .form-textarea {
-            width: 100%;
-            padding: 12px 15px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 6px;
-            color: white;
-            font-size: 1rem;
-            transition: border 0.3s;
-        }
-        
-        .form-input:focus, .form-textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        
-        .form-textarea {
-            min-height: 100px;
-            resize: vertical;
-            font-family: monospace;
-        }
-        
-        .form-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 15px;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255,255,255,0.1);
-        }
-        
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 24px;
-        }
-        
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(255,255,255,0.2);
-            transition: .4s;
-            border-radius: 34px;
-        }
-        
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-        
-        input:checked + .slider {
-            background-color: var(--success);
-        }
-        
-        input:checked + .slider:before {
-            transform: translateX(26px);
-        }
-        
-        .toggle-container {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .toggle-label {
-            margin-bottom: 0;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .stat-card {
-            background: rgba(255,255,255,0.05);
+        .card {
             border-radius: 10px;
-            padding: 25px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             transition: transform 0.3s;
+            margin-bottom: 20px;
         }
         
-        .stat-card:hover {
+        .card:hover {
             transform: translateY(-5px);
-            background: rgba(255,255,255,0.08);
         }
         
-        .stat-icon {
-            font-size: 2.5rem;
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .content-type-badge {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 20px;
+        }
+        
+        .movie-badge {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .series-badge {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .featured-badge {
+            background-color: #f39c12;
+            color: white;
+        }
+        
+        .tab-content {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        
+        .form-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        
+        .preview-image {
+            max-width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .episode-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .api-status {
+            padding: 10px;
+            border-radius: 5px;
             margin-bottom: 15px;
         }
         
-        .stat-value {
-            font-size: 2.2rem;
-            font-weight: bold;
-            margin-bottom: 10px;
+        .status-connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
         }
         
-        .stat-label {
-            color: var(--gray);
-            font-size: 0.9rem;
+        .status-disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
         
-        .alert {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
+        .modal-content {
+            border-radius: 10px;
         }
         
-        .alert-success {
-            background: rgba(39, 174, 96, 0.2);
-            border-left: 4px solid var(--success);
-            color: #27ae60;
-        }
-        
-        .alert-error {
-            background: rgba(231, 76, 60, 0.2);
-            border-left: 4px solid var(--danger);
-            color: #e74c3c;
-        }
-        
-        .alert-warning {
-            background: rgba(243, 156, 18, 0.2);
-            border-left: 4px solid var(--warning);
-            color: #f39c12;
-        }
-        
-        .alert-info {
-            background: rgba(23, 162, 184, 0.2);
-            border-left: 4px solid var(--info);
-            color: #17a2b8;
-        }
-        
-        .loader {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: white;
-            animation: spin 1s ease-in-out infinite;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        .loading {
-            opacity: 0.7;
-            pointer-events: none;
-        }
-        
-        .m3u-url-box {
-            background: rgba(0,0,0,0.3);
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-            word-break: break-all;
-        }
-        
-        .m3u-url-box a {
-            color: var(--primary);
-            text-decoration: none;
-        }
-        
-        .m3u-url-box a:hover {
-            text-decoration: underline;
-        }
-        
-        .playlist-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        
-        .sync-status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.9rem;
-        }
-        
-        .sync-success {
-            color: var(--success);
-        }
-        
-        .sync-error {
-            color: var(--danger);
-        }
-        
-        .sync-pending {
-            color: var(--warning);
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--gray);
-        }
-        
-        .empty-state i {
-            font-size: 4rem;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-        
-        .empty-state h3 {
-            font-size: 1.5rem;
-            margin-bottom: 10px;
-            color: var(--light);
-        }
-        
-        .copy-btn {
-            background: rgba(255,255,255,0.1);
-            border: none;
-            color: white;
-            padding: 8px 15px;
-            border-radius: 6px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: background 0.3s;
-        }
-        
-        .copy-btn:hover {
-            background: rgba(255,255,255,0.2);
-        }
-        
-        .copy-btn.copied {
-            background: var(--success);
-        }
-        
-        @media (max-width: 768px) {
-            .status-bar {
-                flex-wrap: wrap;
-            }
-            
-            .form-row {
-                flex-direction: column;
-                gap: 0;
-            }
-            
-            .search-input {
-                min-width: 100%;
-            }
-            
-            .modal-content {
-                padding: 20px;
-                width: 95%;
-            }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header>
-            <div class="logo">
-                <i class="fas fa-tv"></i>
-                <div>
-                    <h1>IPTV Channel Manager</h1>
-                    <span>Complete M3U8 Management Interface</span>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-film me-2"></i>Movies & TV Manager
+            </a>
+            <div class="d-flex align-items-center">
+                <span class="text-light me-3" id="connectionStatus"></span>
+                <div class="spinner-border spinner-border-sm text-light" role="status" id="loadingSpinner" style="display: none;">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
             </div>
-            <div class="status-bar">
-                <div class="status-item">
-                    <div class="status-value" id="server-status">...</div>
-                    <div class="status-label">Server Status</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-value" id="channel-count">0</div>
-                    <div class="status-label">Channels</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-value" id="playlist-count">0</div>
-                    <div class="status-label">Playlists</div>
-                </div>
-                <div class="status-item">
-                    <div class="status-value" id="db-status">...</div>
-                    <div class="status-label">Database</div>
-                </div>
-            </div>
-        </header>
-        
-        <!-- Navigation -->
-        <nav>
-            <button class="nav-btn active" data-section="dashboard">
-                <i class="fas fa-tachometer-alt"></i> Dashboard
-            </button>
-            <button class="nav-btn" data-section="channels">
-                <i class="fas fa-tv"></i> Channels
-            </button>
-            <button class="nav-btn" data-section="playlists">
-                <i class="fas fa-list"></i> Playlists
-            </button>
-            <button class="nav-btn" data-section="add-channel">
-                <i class="fas fa-plus-circle"></i> Add Channel
-            </button>
-            <button class="nav-btn" data-section="add-playlist">
-                <i class="fas fa-cloud-download-alt"></i> Add Playlist
-            </button>
-            <button class="nav-btn" data-section="m3u-generator">
-                <i class="fas fa-file-export"></i> M3U Generator
-            </button>
-            <button class="nav-btn" data-section="bulk-import">
-                <i class="fas fa-upload"></i> Bulk Import
-            </button>
-        </nav>
-        
-        <!-- Dashboard Section -->
-        <section id="dashboard" class="content-section active">
-            <div class="section-header">
-                <h2><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
-                <button class="btn btn-primary" onclick="refreshStats()">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </button>
-            </div>
-            
-            <div class="stats-grid" id="stats-container">
-                <!-- Stats will be loaded here -->
-                <div class="empty-state">
-                    <i class="fas fa-chart-bar"></i>
-                    <h3>Loading statistics...</h3>
-                    <p>Please wait while we fetch your data</p>
-                </div>
-            </div>
-            
-            <div class="section-header">
-                <h2><i class="fas fa-history"></i> Recent Activity</h2>
-            </div>
-            
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Channel</th>
-                            <th>Group</th>
-                            <th>Status</th>
-                            <th>Last Updated</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="recent-channels">
-                        <tr>
-                            <td colspan="5" style="text-align: center; padding: 40px;">
-                                Loading recent channels...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="m3u-url-box">
-                <h3><i class="fas fa-link"></i> Quick Access M3U URL</h3>
-                <p id="m3u-url">Loading...</p>
-                <div class="playlist-actions">
-                    <button class="btn btn-primary" onclick="copyM3UUrl()">
-                        <i class="fas fa-copy"></i> Copy URL
-                    </button>
-                    <a href="/api/playlist.m3u" target="_blank" class="btn btn-success">
-                        <i class="fas fa-external-link-alt"></i> Open in New Tab
-                    </a>
-                    <button class="btn btn-info" onclick="downloadM3U()">
-                        <i class="fas fa-download"></i> Download M3U
-                    </button>
-                </div>
-            </div>
-        </section>
-        
-        <!-- Channels Section -->
-        <section id="channels" class="content-section">
-            <div class="section-header">
-                <h2><i class="fas fa-tv"></i> Manage Channels</h2>
-                <div>
-                    <button class="btn btn-danger" onclick="deleteAllChannels()" style="margin-right: 10px;">
-                        <i class="fas fa-trash-alt"></i> Delete All
-                    </button>
-                    <button class="btn btn-primary" onclick="loadChannels()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            
-            <div class="search-bar">
-                <input type="text" id="channel-search" class="search-input" placeholder="Search channels by name, tvg-id, or group..." onkeyup="filterChannels()">
-                <select id="group-filter" class="filter-select" onchange="filterChannels()">
-                    <option value="">All Groups</option>
-                </select>
-                <select id="status-filter" class="filter-select" onchange="filterChannels()">
-                    <option value="">All Status</option>
-                    <option value="active">Active Only</option>
-                    <option value="inactive">Inactive Only</option>
-                </select>
-                <button class="btn btn-info" onclick="resetFilters()">
-                    <i class="fas fa-redo"></i> Reset
-                </button>
-            </div>
-            
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th width="50">Logo</th>
-                            <th>Channel Name</th>
-                            <th>TVG ID</th>
-                            <th>Group</th>
-                            <th>DRM</th>
-                            <th>M3U8</th>
-                            <th>Status</th>
-                            <th width="150">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="channels-table">
-                        <tr>
-                            <td colspan="8" style="text-align: center; padding: 40px;">
-                                Loading channels...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="section-header" style="margin-top: 30px;">
-                <h2><i class="fas fa-filter"></i> Channel Groups</h2>
-            </div>
-            
-            <div id="groups-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px;">
-                <!-- Groups will be loaded here -->
-            </div>
-        </section>
-        
-        <!-- Playlists Section -->
-        <section id="playlists" class="content-section">
-            <div class="section-header">
-                <h2><i class="fas fa-list"></i> Manage Playlists</h2>
-                <div>
-                    <button class="btn btn-success" onclick="syncAllPlaylists()" style="margin-right: 10px;">
-                        <i class="fas fa-sync-alt"></i> Sync All
-                    </button>
-                    <button class="btn btn-primary" onclick="loadPlaylists()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Playlist Name</th>
-                            <th>URL</th>
-                            <th>Channels</th>
-                            <th>Auto Sync</th>
-                            <th>Last Sync</th>
-                            <th>Status</th>
-                            <th width="250">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="playlists-table">
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 40px;">
-                                Loading playlists...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-        
-        <!-- Add Channel Section -->
-        <section id="add-channel" class="content-section">
-            <div class="section-header">
-                <h2><i class="fas fa-plus-circle"></i> Add New Channel</h2>
-            </div>
-            
-            <div id="add-channel-alert" style="display: none;"></div>
-            
-            <form id="add-channel-form">
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-title">Channel Title *</label>
-                            <input type="text" id="channel-title" class="form-input" placeholder="Enter channel name" required>
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-tvgid">TVG ID *</label>
-                            <input type="text" id="channel-tvgid" class="form-input" placeholder="Unique identifier (or auto-generate)" value="channel_${Date.now()}">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-url">Stream URL *</label>
-                            <input type="text" id="channel-url" class="form-input" placeholder="http://example.com/stream.m3u8" required>
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-m3u8">M3U8 Fallback URL</label>
-                            <input type="text" id="channel-m3u8" class="form-input" placeholder="Optional backup M3U8 URL">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-group">Group Title</label>
-                            <input type="text" id="channel-group" class="form-input" placeholder="General" value="General">
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-logo">Logo URL</label>
-                            <input type="text" id="channel-logo" class="form-input" placeholder="http://example.com/logo.png">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-key">DRM License Key</label>
-                            <input type="text" id="channel-key" class="form-input" placeholder="Clearkey license key">
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="channel-cookie">Cookie</label>
-                            <input type="text" id="channel-cookie" class="form-input" placeholder="Authentication cookie">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-group toggle-container">
-                    <label class="toggle-label">Active Status</label>
-                    <label class="switch">
-                        <input type="checkbox" id="channel-active" checked>
-                        <span class="slider"></span>
-                    </label>
-                    <span id="active-status-text">Active</span>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-warning" onclick="resetChannelForm()">
-                        <i class="fas fa-redo"></i> Reset
-                    </button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Save Channel
-                    </button>
-                </div>
-            </form>
-        </section>
-        
-        <!-- Add Playlist Section -->
-        <section id="add-playlist" class="content-section">
-            <div class="section-header">
-                <h2><i class="fas fa-cloud-download-alt"></i> Add New Playlist</h2>
-            </div>
-            
-            <div id="add-playlist-alert" style="display: none;"></div>
-            
-            <form id="add-playlist-form">
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="playlist-name">Playlist Name *</label>
-                            <input type="text" id="playlist-name" class="form-input" placeholder="My IPTV Playlist" required>
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="playlist-url">Playlist URL *</label>
-                            <input type="text" id="playlist-url" class="form-input" placeholder="http://example.com/playlist.m3u" required>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="playlist-sync-interval">Sync Interval (hours)</label>
-                            <input type="number" id="playlist-sync-interval" class="form-input" min="1" max="168" value="1">
-                            <small style="color: var(--gray);">How often to auto-sync (1-168 hours)</small>
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group toggle-container">
-                            <label class="toggle-label">Auto Sync</label>
-                            <label class="switch">
-                                <input type="checkbox" id="playlist-auto-sync" checked>
-                                <span class="slider"></span>
-                            </label>
-                            <span id="auto-sync-text">Enabled</span>
-                        </div>
-                        
-                        <div class="form-group toggle-container" style="margin-top: 15px;">
-                            <label class="toggle-label">Active</label>
-                            <label class="switch">
-                                <input type="checkbox" id="playlist-active" checked>
-                                <span class="slider"></span>
-                            </label>
-                            <span id="playlist-active-text">Active</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-warning" onclick="resetPlaylistForm()">
-                        <i class="fas fa-redo"></i> Reset
-                    </button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Save & Sync Playlist
-                    </button>
-                </div>
-            </form>
-        </section>
-        
-        <!-- M3U Generator Section -->
-        <section id="m3u-generator" class="content-section">
-            <div class="section-header">
-                <h2><i class="fas fa-file-export"></i> M3U Playlist Generator</h2>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-col">
-                    <div class="form-group">
-                        <label for="m3u-group-filter">Filter by Group</label>
-                        <select id="m3u-group-filter" class="form-input">
-                            <option value="">All Groups</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-col">
-                    <div class="form-group toggle-container">
-                        <label class="toggle-label">Use M3U8 Fallback URLs</label>
-                        <label class="switch">
-                            <input type="checkbox" id="use-m3u8-fallback">
-                            <span class="slider"></span>
-                        </label>
-                        <span id="m3u8-fallback-text">Disabled</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="m3u-url-box">
-                <h3><i class="fas fa-link"></i> Generated M3U URL</h3>
-                <p id="generated-m3u-url">Select options above to generate URL</p>
-                <div class="playlist-actions">
-                    <button class="btn btn-primary" onclick="copyGeneratedM3UUrl()">
-                        <i class="fas fa-copy"></i> Copy URL
-                    </button>
-                    <button class="btn btn-success" onclick="openGeneratedM3U()" id="open-m3u-btn" disabled>
-                        <i class="fas fa-external-link-alt"></i> Open M3U
-                    </button>
-                    <button class="btn btn-info" onclick="downloadGeneratedM3U()" id="download-m3u-btn" disabled>
-                        <i class="fas fa-download"></i> Download
-                    </button>
-                </div>
-            </div>
-            
-            <div class="section-header" style="margin-top: 30px;">
-                <h2><i class="fas fa-info-circle"></i> Usage Instructions</h2>
-            </div>
-            
-            <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px;">
-                <h4>For IPTV Players:</h4>
-                <p>1. Copy the generated URL above</p>
-                <p>2. In your IPTV player (TiviMate, IPTV Smarters, VLC, etc.), add this URL as a new playlist</p>
-                <p>3. The player will automatically load all your channels</p>
-                
-                <h4 style="margin-top: 20px;">Direct Links:</h4>
-                <ul style="margin-left: 20px; margin-top: 10px;">
-                    <li><a href="/api/playlist.m3u" target="_blank">/api/playlist.m3u</a> - All active channels</li>
-                    <li><a href="/api/playlist.m3u?useM3u8=true" target="_blank">/api/playlist.m3u?useM3u8=true</a> - Use M3U8 fallback URLs</li>
-                </ul>
-            </div>
-        </section>
-        
-        <!-- Bulk Import Section -->
-        <section id="bulk-import" class="content-section">
-            <div class="section-header">
-                <h2><i class="fas fa-upload"></i> Bulk Import from M3U</h2>
-            </div>
-            
-            <div id="bulk-import-alert" style="display: none;"></div>
-            
-            <div class="form-group">
-                <label for="m3u-content">Paste M3U Content *</label>
-                <textarea id="m3u-content" class="form-textarea" placeholder="#EXTM3U
-#EXTINF:-1 tvg-id=&quot;channel1&quot; group-title=&quot;Movies&quot; tvg-logo=&quot;http://example.com/logo.png&quot;,Channel Name
-#KODIPROP:inputstream.adaptive.license_key=your_license_key
-#EXTHTTP:{&quot;cookie&quot;:&quot;your_cookie&quot;}
-http://example.com/stream.m3u8
-
-#EXTINF:-1 tvg-id=&quot;channel2&quot; group-title=&quot;Sports&quot;,Another Channel
-http://example.com/stream2.m3u8" rows="15"></textarea>
-            </div>
-            
-            <div class="form-actions">
-                <button type="button" class="btn btn-warning" onclick="clearM3UContent()">
-                    <i class="fas fa-trash-alt"></i> Clear
-                </button>
-                <button type="button" class="btn btn-success" onclick="importM3U()">
-                    <i class="fas fa-upload"></i> Import M3U
-                </button>
-                <button type="button" class="btn btn-info" onclick="loadExampleM3U()">
-                    <i class="fas fa-eye"></i> Load Example
-                </button>
-            </div>
-            
-            <div class="section-header" style="margin-top: 30px;">
-                <h2><i class="fas fa-history"></i> Import Results</h2>
-            </div>
-            
-            <div id="import-results" style="display: none;">
-                <!-- Results will be shown here -->
-            </div>
-        </section>
-    </div>
-    
-    <!-- Edit Channel Modal -->
-    <div id="edit-channel-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-edit"></i> Edit Channel</h3>
-                <button class="close-modal" onclick="closeEditModal()">&times;</button>
-            </div>
-            <div id="edit-channel-alert" style="display: none;"></div>
-            <form id="edit-channel-form">
-                <input type="hidden" id="edit-channel-id">
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-title">Channel Title *</label>
-                            <input type="text" id="edit-channel-title" class="form-input" required>
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-tvgid">TVG ID *</label>
-                            <input type="text" id="edit-channel-tvgid" class="form-input" required>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-url">Stream URL *</label>
-                            <input type="text" id="edit-channel-url" class="form-input" required>
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-m3u8">M3U8 Fallback URL</label>
-                            <input type="text" id="edit-channel-m3u8" class="form-input">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-group">Group Title</label>
-                            <input type="text" id="edit-channel-group" class="form-input">
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-logo">Logo URL</label>
-                            <input type="text" id="edit-channel-logo" class="form-input">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-key">DRM License Key</label>
-                            <input type="text" id="edit-channel-key" class="form-input">
-                        </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-channel-cookie">Cookie</label>
-                            <input type="text" id="edit-channel-cookie" class="form-input">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-group toggle-container">
-                    <label class="toggle-label">Active Status</label>
-                    <label class="switch">
-                        <input type="checkbox" id="edit-channel-active">
-                        <span class="slider"></span>
-                    </label>
-                    <span id="edit-active-status-text">Active</span>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-danger" onclick="deleteChannel()">
-                        <i class="fas fa-trash-alt"></i> Delete Channel
-                    </button>
-                    <button type="button" class="btn btn-warning" onclick="closeEditModal()">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Save Changes
-                    </button>
-                </div>
-            </form>
         </div>
-    </div>
-    
-    <!-- Edit Playlist Modal -->
-    <div id="edit-playlist-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-edit"></i> Edit Playlist</h3>
-                <button class="close-modal" onclick="closePlaylistModal()">&times;</button>
-            </div>
-            <div id="edit-playlist-alert" style="display: none;"></div>
-            <form id="edit-playlist-form">
-                <input type="hidden" id="edit-playlist-id">
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-playlist-name">Playlist Name *</label>
-                            <input type="text" id="edit-playlist-name" class="form-input" required>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- API Configuration -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="form-section">
+                    <h4><i class="bi bi-gear me-2"></i>API Configuration</h4>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <input type="text" id="apiBaseUrl" class="form-control" 
+                                   placeholder="Enter API Base URL (e.g., http://localhost:3000)" 
+                                   value="http://localhost:3000">
                         </div>
-                    </div>
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-playlist-url">Playlist URL *</label>
-                            <input type="text" id="edit-playlist-url" class="form-input" required>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary w-100" onclick="testConnection()">
+                                <i class="bi bi-plug me-2"></i>Test Connection
+                            </button>
                         </div>
                     </div>
                 </div>
-                
-                <div class="form-row">
-                    <div class="form-col">
-                        <div class="form-group">
-                            <label for="edit-playlist-sync-interval">Sync Interval (hours)</label>
-                            <input type="number" id="edit-playlist-sync-interval" class="form-input" min="1" max="168">
+            </div>
+        </div>
+
+        <!-- Stats Overview -->
+        <div class="row mb-4" id="statsSection">
+            <div class="col-xl-3 col-md-6">
+                <div class="stats-card">
+                    <h5><i class="bi bi-film me-2"></i>Total Content</h5>
+                    <h2 id="totalContent">0</h2>
+                    <div class="row">
+                        <div class="col-6">Movies: <span id="totalMovies">0</span></div>
+                        <div class="col-6">Series: <span id="totalSeries">0</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6">
+                <div class="stats-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <h5><i class="bi bi-collection-play me-2"></i>Episodes</h5>
+                    <h2 id="totalEpisodes">0</h2>
+                    <div>Seasons: <span id="totalSeasons">0</span></div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6">
+                <div class="stats-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <h5><i class="bi bi-star me-2"></i>Categories & Genres</h5>
+                    <div class="row">
+                        <div class="col-6">Categories: <span id="totalCategories">0</span></div>
+                        <div class="col-6">Genres: <span id="totalGenres">0</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6">
+                <div class="stats-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                    <h5><i class="bi bi-lightning me-2"></i>Featured</h5>
+                    <h2 id="featuredContent">0</h2>
+                    <div>API Status: <span id="apiStatus">Checking...</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="row">
+            <div class="col-lg-3">
+                <!-- Navigation Menu -->
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-menu-button me-2"></i>Menu</h5>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        <a href="#" class="list-group-item list-group-item-action active" onclick="showSection('dashboard')">
+                            <i class="bi bi-speedometer2 me-2"></i>Dashboard
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="showSection('addMovie')">
+                            <i class="bi bi-plus-circle me-2"></i>Add Movie
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="showSection('addSeries')">
+                            <i class="bi bi-plus-circle-fill me-2"></i>Add Series
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="showSection('manageContent')">
+                            <i class="bi bi-collection me-2"></i>Manage Content
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="showSection('bulkImport')">
+                            <i class="bi bi-upload me-2"></i>Bulk Import
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="showSection('playlists')">
+                            <i class="bi bi-list-ul me-2"></i>Playlists
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="showSection('search')">
+                            <i class="bi bi-search me-2"></i>Search
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="showSection('categories')">
+                            <i class="bi bi-tags me-2"></i>Categories & Genres
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Quick Actions</h6>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-outline-primary btn-sm w-100 mb-2" onclick="loadAllContent()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Refresh Content
+                        </button>
+                        <button class="btn btn-outline-success btn-sm w-100 mb-2" onclick="fetchStats()">
+                            <i class="bi bi-graph-up me-1"></i>Update Stats
+                        </button>
+                        <button class="btn btn-outline-warning btn-sm w-100 mb-2" onclick="showSection('addMovie')">
+                            <i class="bi bi-film me-1"></i>Quick Add Movie
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm w-100" onclick="showSection('addSeries')">
+                            <i class="bi bi-tv me-1"></i>Quick Add Series
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-9">
+                <!-- Dashboard Section -->
+                <div id="dashboardSection" class="tab-content">
+                    <h3 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Dashboard</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="bi bi-film me-2"></i>Recent Movies</h6>
+                                </div>
+                                <div class="card-body" id="recentMovies">
+                                    <div class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="bi bi-tv me-2"></i>Recent Series</h6>
+                                </div>
+                                <div class="card-body" id="recentSeries">
+                                    <div class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="form-col">
-                        <div class="form-group toggle-container">
-                            <label class="toggle-label">Auto Sync</label>
-                            <label class="switch">
-                                <input type="checkbox" id="edit-playlist-auto-sync">
-                                <span class="slider"></span>
-                            </label>
-                            <span id="edit-auto-sync-text">Enabled</span>
+                    
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="bi bi-star-fill me-2"></i>Featured Content</h6>
+                        </div>
+                        <div class="card-body" id="featuredList">
+                            <div class="text-center">
+                                <div class="spinner-border text-warning" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Movie Section -->
+                <div id="addMovieSection" class="tab-content" style="display: none;">
+                    <h3 class="mb-4"><i class="bi bi-plus-circle me-2"></i>Add New Movie</h3>
+                    <form id="addMovieForm">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label class="form-label">Movie Title *</label>
+                                    <input type="text" class="form-control" name="title" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Stream URL *</label>
+                                    <input type="url" class="form-control" name="streamUrl" required 
+                                           placeholder="https://example.com/movie.mp4">
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Thumbnail URL</label>
+                                            <input type="url" class="form-control" name="thumbnail" 
+                                                   placeholder="https://example.com/thumbnail.jpg">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Banner Image URL</label>
+                                            <input type="url" class="form-control" name="bannerImage" 
+                                                   placeholder="https://example.com/banner.jpg">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-control" name="description" rows="3"></textarea>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Duration (e.g., 2h 15m)</label>
+                                            <input type="text" class="form-control" name="duration">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Year</label>
+                                            <input type="number" class="form-control" name="year" 
+                                                   min="1900" max="2030">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Preview</label>
+                                    <img src="https://via.placeholder.com/300x200?text=Thumbnail+Preview" 
+                                         class="preview-image" id="movieThumbPreview">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Genres</label>
+                                    <select class="form-select" name="genre" multiple>
+                                        <option value="Action">Action</option>
+                                        <option value="Comedy">Comedy</option>
+                                        <option value="Drama">Drama</option>
+                                        <option value="Sci-Fi">Sci-Fi</option>
+                                        <option value="Horror">Horror</option>
+                                        <option value="Romance">Romance</option>
+                                        <option value="Thriller">Thriller</option>
+                                        <option value="Documentary">Documentary</option>
+                                    </select>
+                                    <small class="text-muted">Hold Ctrl to select multiple</small>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="isFeatured">
+                                        <label class="form-check-label">Featured Content</label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         
-                        <div class="form-group toggle-container" style="margin-top: 15px;">
-                            <label class="toggle-label">Active</label>
-                            <label class="switch">
-                                <input type="checkbox" id="edit-playlist-active">
-                                <span class="slider"></span>
-                            </label>
-                            <span id="edit-playlist-active-text">Active</span>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Cast (comma separated)</label>
+                                    <input type="text" class="form-control" name="cast" 
+                                           placeholder="Actor 1, Actor 2, Actor 3">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label class="form-label">Rating (e.g., PG-13)</label>
+                                    <input type="text" class="form-control" name="rating">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label class="form-label">IMDB Rating</label>
+                                    <input type="number" class="form-control" name="imdbRating" 
+                                           min="0" max="10" step="0.1">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="button" class="btn btn-secondary me-2" onclick="clearMovieForm()">
+                                <i class="bi bi-x-circle me-1"></i>Clear
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-1"></i>Save Movie
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Add Series Section -->
+                <div id="addSeriesSection" class="tab-content" style="display: none;">
+                    <h3 class="mb-4"><i class="bi bi-plus-circle-fill me-2"></i>Add New Series</h3>
+                    <form id="addSeriesForm">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label class="form-label">Series Title *</label>
+                                    <input type="text" class="form-control" name="title" required>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Thumbnail URL</label>
+                                            <input type="url" class="form-control" name="thumbnail" 
+                                                   placeholder="https://example.com/thumbnail.jpg">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Banner Image URL</label>
+                                            <input type="url" class="form-control" name="bannerImage" 
+                                                   placeholder="https://example.com/banner.jpg">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-control" name="description" rows="3"></textarea>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Preview</label>
+                                    <img src="https://via.placeholder.com/300x200?text=Series+Thumbnail" 
+                                         class="preview-image" id="seriesThumbPreview">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Genres</label>
+                                    <select class="form-select" name="genre" multiple>
+                                        <option value="Action">Action</option>
+                                        <option value="Comedy">Comedy</option>
+                                        <option value="Drama">Drama</option>
+                                        <option value="Sci-Fi">Sci-Fi</option>
+                                        <option value="Crime">Crime</option>
+                                        <option value="Fantasy">Fantasy</option>
+                                        <option value="Documentary">Documentary</option>
+                                    </select>
+                                    <small class="text-muted">Hold Ctrl to select multiple</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Seasons Section -->
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="bi bi-list-ol me-2"></i>Seasons</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="seasonsContainer">
+                                    <!-- Seasons will be added dynamically -->
+                                </div>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addSeasonField()">
+                                    <i class="bi bi-plus me-1"></i>Add Season
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                            <button type="button" class="btn btn-secondary me-2" onclick="clearSeriesForm()">
+                                <i class="bi bi-x-circle me-1"></i>Clear
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-1"></i>Save Series
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Manage Content Section -->
+                <div id="manageContentSection" class="tab-content" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h3 class="mb-0"><i class="bi bi-collection me-2"></i>Manage Content</h3>
+                        <div>
+                            <button class="btn btn-outline-primary btn-sm me-2" onclick="loadAllContent()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <select class="form-select form-select-sm d-inline-block w-auto" onchange="filterContent(this.value)">
+                                <option value="all">All Content</option>
+                                <option value="movie">Movies Only</option>
+                                <option value="series">Series Only</option>
+                                <option value="featured">Featured Only</option>
+                            </select>
                         </div>
                     </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="contentTable">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Type</th>
+                                    <th>Category</th>
+                                    <th>Year</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="contentTableBody">
+                                <!-- Content will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div>
+                            <span id="contentCount">0</span> items
+                        </div>
+                        <nav>
+                            <ul class="pagination pagination-sm mb-0" id="pagination">
+                                <!-- Pagination will be added here -->
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- Other sections (Bulk Import, Playlists, Search, Categories) -->
+                <div id="bulkImportSection" class="tab-content" style="display: none;">
+                    <h3 class="mb-4"><i class="bi bi-upload me-2"></i>Bulk Import</h3>
+                    <!-- Bulk import content will go here -->
                 </div>
                 
-                <div class="form-actions">
-                    <button type="button" class="btn btn-danger" onclick="deletePlaylist()">
-                        <i class="fas fa-trash-alt"></i> Delete Playlist
-                    </button>
-                    <button type="button" class="btn btn-warning" onclick="closePlaylistModal()">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Save Changes
-                    </button>
+                <div id="playlistsSection" class="tab-content" style="display: none;">
+                    <h3 class="mb-4"><i class="bi bi-list-ul me-2"></i>Playlists</h3>
+                    <!-- Playlists content will go here -->
                 </div>
-            </form>
+                
+                <div id="searchSection" class="tab-content" style="display: none;">
+                    <h3 class="mb-4"><i class="bi bi-search me-2"></i>Search</h3>
+                    <!-- Search content will go here -->
+                </div>
+                
+                <div id="categoriesSection" class="tab-content" style="display: none;">
+                    <h3 class="mb-4"><i class="bi bi-tags me-2"></i>Categories & Genres</h3>
+                    <!-- Categories content will go here -->
+                </div>
+            </div>
         </div>
     </div>
 
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    
     <script>
-        // Base URL for API
-        const API_BASE = window.location.origin;
-        let allChannels = [];
-        let allPlaylists = [];
-        let allGroups = [];
-        
-        // Initialize the application
+        // Configuration
+        const API_BASE_URL = document.getElementById('apiBaseUrl').value;
+        let currentPage = 1;
+        let totalPages = 1;
+        let seasonCounter = 1;
+        let episodeCounters = {};
+
+        // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            setupEventListeners();
-            checkServerStatus();
-            loadStats();
-            loadChannels();
-            loadPlaylists();
-            loadGroups();
-            updateM3UUrl();
-            
-            // Update groups in filter dropdowns
-            setInterval(() => {
-                updateGroupFilters();
-            }, 10000);
+            testConnection();
+            showSection('dashboard');
+            setupFormListeners();
         });
-        
-        // Setup event listeners
-        function setupEventListeners() {
-            // Navigation buttons
-            document.querySelectorAll('.nav-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-                    document.querySelectorAll('.content-section').forEach(section => section.classList.remove('active'));
-                    this.classList.add('active');
-                    const sectionId = this.getAttribute('data-section');
-                    document.getElementById(sectionId).classList.add('active');
-                });
-            });
-            
-            // Toggle switches
-            document.getElementById('channel-active').addEventListener('change', function() {
-                document.getElementById('active-status-text').textContent = this.checked ? 'Active' : 'Inactive';
-            });
-            
-            document.getElementById('edit-channel-active').addEventListener('change', function() {
-                document.getElementById('edit-active-status-text').textContent = this.checked ? 'Active' : 'Inactive';
-            });
-            
-            document.getElementById('playlist-auto-sync').addEventListener('change', function() {
-                document.getElementById('auto-sync-text').textContent = this.checked ? 'Enabled' : 'Disabled';
-            });
-            
-            document.getElementById('playlist-active').addEventListener('change', function() {
-                document.getElementById('playlist-active-text').textContent = this.checked ? 'Active' : 'Inactive';
-            });
-            
-            document.getElementById('edit-playlist-auto-sync').addEventListener('change', function() {
-                document.getElementById('edit-auto-sync-text').textContent = this.checked ? 'Enabled' : 'Disabled';
-            });
-            
-            document.getElementById('edit-playlist-active').addEventListener('change', function() {
-                document.getElementById('edit-playlist-active-text').textContent = this.checked ? 'Active' : 'Inactive';
-            });
-            
-            document.getElementById('use-m3u8-fallback').addEventListener('change', function() {
-                document.getElementById('m3u8-fallback-text').textContent = this.checked ? 'Enabled' : 'Disabled';
-                updateGeneratedM3UUrl();
-            });
-            
-            document.getElementById('m3u-group-filter').addEventListener('change', updateGeneratedM3UUrl);
-            
-            // Forms
-            document.getElementById('add-channel-form').addEventListener('submit', addChannel);
-            document.getElementById('add-playlist-form').addEventListener('submit', addPlaylist);
-            document.getElementById('edit-channel-form').addEventListener('submit', updateChannel);
-            document.getElementById('edit-playlist-form').addEventListener('submit', updatePlaylist);
-            
-            // Channel search
-            document.getElementById('channel-search').addEventListener('input', filterChannels);
+
+        // API Configuration Functions
+        function getApiBaseUrl() {
+            return document.getElementById('apiBaseUrl').value.replace(/\/$/, '');
         }
-        
-        // Check server status
-        async function checkServerStatus() {
+
+        async function testConnection() {
+            const apiUrl = getApiBaseUrl();
+            showLoading(true);
+            
             try {
-                const response = await fetch(`${API_BASE}/health`);
-                const data = await response.json();
-                
-                document.getElementById('server-status').textContent = 'Online';
-                document.getElementById('server-status').className = 'status-value status-online';
-                document.getElementById('db-status').textContent = data.mongodb === 'connected' ? 'Connected' : 'Disconnected';
-                document.getElementById('db-status').className = data.mongodb === 'connected' ? 'status-value status-online' : 'status-value status-offline';
+                const response = await fetch(`${apiUrl}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    showToast('success', '✅ API Connected Successfully');
+                    document.getElementById('connectionStatus').innerHTML = 
+                        `<span class="badge bg-success">Connected</span>`;
+                    document.getElementById('apiStatus').textContent = 'Connected';
+                    
+                    // Load data after successful connection
+                    fetchStats();
+                    loadDashboardData();
+                    loadAllContent();
+                } else {
+                    throw new Error('Failed to connect to API');
+                }
             } catch (error) {
-                document.getElementById('server-status').textContent = 'Offline';
-                document.getElementById('server-status').className = 'status-value status-offline';
-                document.getElementById('db-status').textContent = 'Unknown';
-                document.getElementById('db-status').className = 'status-value status-offline';
-                console.error('Server status check failed:', error);
+                showToast('error', '❌ Failed to connect to API');
+                document.getElementById('connectionStatus').innerHTML = 
+                    `<span class="badge bg-danger">Disconnected</span>`;
+                document.getElementById('apiStatus').textContent = 'Disconnected';
+            } finally {
+                showLoading(false);
             }
         }
-        
-        // Load statistics
-        async function loadStats() {
+
+        // Navigation Functions
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.tab-content').forEach(section => {
+                section.style.display = 'none';
+            });
+            
+            // Remove active class from all menu items
+            document.querySelectorAll('.list-group-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Show selected section
+            document.getElementById(sectionId + 'Section').style.display = 'block';
+            
+            // Set active menu item
+            document.querySelectorAll('.list-group-item').forEach(item => {
+                if (item.textContent.includes(sectionId.charAt(0).toUpperCase() + sectionId.slice(1).replace(/([A-Z])/g, ' $1').trim())) {
+                    item.classList.add('active');
+                }
+            });
+            
+            // Special handling for dashboard
+            if (sectionId === 'dashboard') {
+                document.querySelector('.list-group-item:nth-child(1)').classList.add('active');
+                loadDashboardData();
+            }
+        }
+
+        // Stats Functions
+        async function fetchStats() {
             try {
-                const response = await fetch(`${API_BASE}/api/stats`);
+                const response = await fetch(`${getApiBaseUrl()}/api/stats`);
                 const data = await response.json();
                 
                 if (data.success) {
                     const stats = data.data;
+                    document.getElementById('totalContent').textContent = stats.totalContent;
+                    document.getElementById('totalMovies').textContent = stats.totalMovies;
+                    document.getElementById('totalSeries').textContent = stats.totalSeries;
+                    document.getElementById('featuredContent').textContent = stats.featuredContent;
+                    document.getElementById('totalSeasons').textContent = stats.totalSeasons;
+                    document.getElementById('totalEpisodes').textContent = stats.totalEpisodes;
+                    document.getElementById('totalCategories').textContent = stats.totalCategories;
+                    document.getElementById('totalGenres').textContent = stats.totalGenres;
+                }
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+
+        // Dashboard Data
+        async function loadDashboardData() {
+            await Promise.all([
+                loadRecentMovies(),
+                loadRecentSeries(),
+                loadFeaturedContent()
+            ]);
+        }
+
+        async function loadRecentMovies() {
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/api/content?type=movie&limit=5`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const container = document.getElementById('recentMovies');
+                    container.innerHTML = '';
                     
-                    document.getElementById('channel-count').textContent = stats.totalChannels;
-                    document.getElementById('playlist-count').textContent = stats.totalPlaylists;
-                    
-                    const statsContainer = document.getElementById('stats-container');
-                    statsContainer.innerHTML = `
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #3498db;">
-                                <i class="fas fa-tv"></i>
+                    data.data.forEach(movie => {
+                        container.innerHTML += `
+                            <div class="d-flex align-items-center mb-2 p-2 border rounded">
+                                <div class="me-3">
+                                    <span class="badge movie-badge content-type-badge">Movie</span>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <strong>${movie.title}</strong>
+                                    <div class="small text-muted">
+                                        ${movie.year || 'N/A'} • ${movie.duration || 'N/A'}
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewContent('${movie._id}')">
+                                    <i class="bi bi-eye"></i>
+                                </button>
                             </div>
-                            <div class="stat-value">${stats.totalChannels}</div>
-                            <div class="stat-label">Total Channels</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #27ae60;">
-                                <i class="fas fa-check-circle"></i>
-                            </div>
-                            <div class="stat-value">${stats.activeChannels}</div>
-                            <div class="stat-label">Active Channels</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #9b59b6;">
-                                <i class="fas fa-layer-group"></i>
-                            </div>
-                            <div class="stat-value">${stats.totalGroups}</div>
-                            <div class="stat-label">Channel Groups</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #e74c3c;">
-                                <i class="fas fa-shield-alt"></i>
-                            </div>
-                            <div class="stat-value">${stats.channelsWithDRM}</div>
-                            <div class="stat-label">DRM Channels</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #f39c12;">
-                                <i class="fas fa-backup"></i>
-                            </div>
-                            <div class="stat-value">${stats.channelsWithM3u8Fallback}</div>
-                            <div class="stat-label">M3U8 Fallback</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #17a2b8;">
-                                <i class="fas fa-list"></i>
-                            </div>
-                            <div class="stat-value">${stats.totalPlaylists}</div>
-                            <div class="stat-label">Playlists</div>
-                        </div>
-                    `;
+                        `;
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading recent movies:', error);
+            }
+        }
+
+        async function loadRecentSeries() {
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/api/content?type=series&limit=5`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const container = document.getElementById('recentSeries');
+                    container.innerHTML = '';
                     
-                    // Update recent channels
-                    updateRecentChannels();
-                }
-            } catch (error) {
-                console.error('Failed to load stats:', error);
-                showAlert('stats-container', 'Failed to load statistics. Please try again.', 'error');
-            }
-        }
-        
-        // Refresh stats
-        function refreshStats() {
-            loadStats();
-            showAlert('dashboard', 'Statistics refreshed!', 'success');
-        }
-        
-        // Load channels
-        async function loadChannels() {
-            try {
-                const response = await fetch(`${API_BASE}/api/channels`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    allChannels = data.data;
-                    displayChannels(allChannels);
-                    updateGroupFilters();
-                }
-            } catch (error) {
-                console.error('Failed to load channels:', error);
-                showAlert('channels', 'Failed to load channels. Please try again.', 'error');
-            }
-        }
-        
-        // Display channels in table
-        function displayChannels(channels) {
-            const tbody = document.getElementById('channels-table');
-            
-            if (channels.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 40px;">
-                            <div class="empty-state">
-                                <i class="fas fa-tv"></i>
-                                <h3>No Channels Found</h3>
-                                <p>Add your first channel using the "Add Channel" tab</p>
+                    data.data.forEach(series => {
+                        container.innerHTML += `
+                            <div class="d-flex align-items-center mb-2 p-2 border rounded">
+                                <div class="me-3">
+                                    <span class="badge series-badge content-type-badge">Series</span>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <strong>${series.title}</strong>
+                                    <div class="small text-muted">
+                                        ${series.year || 'N/A'} • ${series.totalSeasons || 0} seasons
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger" onclick="viewContent('${series._id}')">
+                                    <i class="bi bi-eye"></i>
+                                </button>
                             </div>
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-            
-            tbody.innerHTML = '';
-            
-            channels.forEach(channel => {
-                const row = document.createElement('tr');
-                
-                const hasDRM = channel.key ? 'Yes' : 'No';
-                const hasM3U8 = channel.m3u8Url ? 'Yes' : 'No';
-                const status = channel.isActive ? 'Active' : 'Inactive';
-                
-                row.innerHTML = `
-                    <td>
-                        ${channel.logo ? 
-                            `<img src="${channel.logo}" alt="${channel.title}" class="channel-logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHJ4PSI2IiBmaWxsPSIjMzQ5OERCIi8+PHRleHQgeD0iMjAiIHk9IjIwIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0Ij5UVjwvdGV4dD48L3N2Zz4=';">` : 
-                            `<div class="channel-logo" style="display: flex; align-items: center; justify-content: center; background: #3498db; color: white; font-weight: bold;">TV</div>`
-                        }
-                    </td>
-                    <td>
-                        <strong>${channel.title}</strong>
-                        ${channel.sourcePlaylistId ? '<br><small style="color: var(--gray); font-size: 0.8rem;">Imported from playlist</small>' : ''}
-                    </td>
-                    <td><code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">${channel.tvgId}</code></td>
-                    <td><span class="badge badge-info">${channel.groupTitle}</span></td>
-                    <td><span class="badge ${channel.key ? 'badge-warning' : 'badge-info'}">${hasDRM}</span></td>
-                    <td><span class="badge ${channel.m3u8Url ? 'badge-success' : 'badge-info'}">${hasM3U8}</span></td>
-                    <td><span class="badge ${channel.isActive ? 'badge-success' : 'badge-danger'}">${status}</span></td>
-                    <td>
-                        <div class="action-buttons">
-                            <button class="action-btn edit" onclick="openEditChannel('${channel._id}')" title="Edit">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="action-btn delete" onclick="confirmDeleteChannel('${channel._id}', '${channel.title}')" title="Delete">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                            <button class="action-btn play" onclick="testChannel('${channel.url}')" title="Test Stream">
-                                <i class="fas fa-play"></i>
-                            </button>
-                            <button class="action-btn" onclick="copyChannelUrl('${channel.url}')" title="Copy URL">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                        </div>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-        }
-        
-        // Filter channels
-        function filterChannels() {
-            const searchTerm = document.getElementById('channel-search').value.toLowerCase();
-            const groupFilter = document.getElementById('group-filter').value;
-            const statusFilter = document.getElementById('status-filter').value;
-            
-            let filtered = allChannels;
-            
-            if (searchTerm) {
-                filtered = filtered.filter(channel => 
-                    channel.title.toLowerCase().includes(searchTerm) ||
-                    channel.tvgId.toLowerCase().includes(searchTerm) ||
-                    channel.groupTitle.toLowerCase().includes(searchTerm)
-                );
-            }
-            
-            if (groupFilter) {
-                filtered = filtered.filter(channel => channel.groupTitle === groupFilter);
-            }
-            
-            if (statusFilter === 'active') {
-                filtered = filtered.filter(channel => channel.isActive);
-            } else if (statusFilter === 'inactive') {
-                filtered = filtered.filter(channel => !channel.isActive);
-            }
-            
-            displayChannels(filtered);
-        }
-        
-        // Reset filters
-        function resetFilters() {
-            document.getElementById('channel-search').value = '';
-            document.getElementById('group-filter').value = '';
-            document.getElementById('status-filter').value = '';
-            displayChannels(allChannels);
-        }
-        
-        // Load groups
-        async function loadGroups() {
-            try {
-                const response = await fetch(`${API_BASE}/api/groups`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    allGroups = data.data;
-                    updateGroupFilters();
-                    displayGroups();
+                        `;
+                    });
                 }
             } catch (error) {
-                console.error('Failed to load groups:', error);
+                console.error('Error loading recent series:', error);
             }
         }
-        
-        // Display groups
-        function displayGroups() {
-            const container = document.getElementById('groups-container');
-            
-            if (allGroups.length === 0) {
-                container.innerHTML = '<p>No groups found</p>';
-                return;
-            }
-            
-            container.innerHTML = '';
-            
-            allGroups.forEach(group => {
-                const groupChannels = allChannels.filter(c => c.groupTitle === group);
-                const activeChannels = groupChannels.filter(c => c.isActive).length;
-                
-                const groupDiv = document.createElement('div');
-                groupDiv.style.cssText = `
-                    background: rgba(255,255,255,0.05);
-                    padding: 15px;
-                    border-radius: 8px;
-                    min-width: 200px;
-                    flex: 1;
-                `;
-                
-                groupDiv.innerHTML = `
-                    <h4 style="margin-bottom: 10px; color: var(--primary);">${group}</h4>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <span style="color: var(--gray);">Channels:</span>
-                        <span style="font-weight: bold;">${groupChannels.length}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                        <span style="color: var(--gray);">Active:</span>
-                        <span style="color: var(--success); font-weight: bold;">${activeChannels}</span>
-                    </div>
-                    <button class="btn btn-primary" style="width: 100%;" onclick="filterByGroup('${group}')">
-                        <i class="fas fa-filter"></i> Filter Group
-                    </button>
-                `;
-                
-                container.appendChild(groupDiv);
-            });
-        }
-        
-        // Filter by group
-        function filterByGroup(group) {
-            document.getElementById('group-filter').value = group;
-            document.querySelector('.nav-btn[data-section="channels"]').click();
-            filterChannels();
-        }
-        
-        // Update group filters in dropdowns
-        function updateGroupFilters() {
-            const groupSelect = document.getElementById('group-filter');
-            const m3uGroupSelect = document.getElementById('m3u-group-filter');
-            
-            // Get unique groups from channels
-            const groups = [...new Set(allChannels.map(c => c.groupTitle))].sort();
-            
-            // Update channel filter
-            groupSelect.innerHTML = '<option value="">All Groups</option>';
-            groups.forEach(group => {
-                groupSelect.innerHTML += `<option value="${group}">${group}</option>`;
-            });
-            
-            // Update M3U generator filter
-            m3uGroupSelect.innerHTML = '<option value="">All Groups</option>';
-            groups.forEach(group => {
-                m3uGroupSelect.innerHTML += `<option value="${group}">${group}</option>`;
-            });
-        }
-        
-        // Load playlists
-        async function loadPlaylists() {
+
+        async function loadFeaturedContent() {
             try {
-                const response = await fetch(`${API_BASE}/api/playlists`);
+                const response = await fetch(`${getApiBaseUrl()}/api/content?featured=true&limit=10`);
                 const data = await response.json();
                 
                 if (data.success) {
-                    allPlaylists = data.data;
-                    displayPlaylists(allPlaylists);
-                }
-            } catch (error) {
-                console.error('Failed to load playlists:', error);
-                showAlert('playlists', 'Failed to load playlists. Please try again.', 'error');
-            }
-        }
-        
-        // Display playlists
-        function displayPlaylists(playlists) {
-            const tbody = document.getElementById('playlists-table');
-            
-            if (playlists.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="7" style="text-align: center; padding: 40px;">
-                            <div class="empty-state">
-                                <i class="fas fa-list"></i>
-                                <h3>No Playlists Found</h3>
-                                <p>Add your first playlist using the "Add Playlist" tab</p>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-            
-            tbody.innerHTML = '';
-            
-            playlists.forEach(playlist => {
-                const row = document.createElement('tr');
-                
-                const lastSync = playlist.lastSyncAt ? 
-                    new Date(playlist.lastSyncAt).toLocaleString() : 'Never';
-                const statusClass = playlist.lastSyncStatus === 'success' ? 'sync-success' : 
-                                  playlist.lastSyncStatus === 'error' ? 'sync-error' : 'sync-pending';
-                
-                row.innerHTML = `
-                    <td><strong>${playlist.name}</strong></td>
-                    <td><code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; max-width: 300px; display: inline-block; overflow: hidden; text-overflow: ellipsis;">${playlist.url}</code></td>
-                    <td><span class="badge badge-info">${playlist.channelCount}</span></td>
-                    <td>
-                        <span class="badge ${playlist.autoSync ? 'badge-success' : 'badge-warning'}">
-                            ${playlist.autoSync ? 'Yes' : 'No'}
-                        </span>
-                    </td>
-                    <td>${lastSync}</td>
-                    <td>
-                        <div class="sync-status">
-                            <i class="fas fa-circle ${statusClass}"></i>
-                            <span class="${statusClass}">${playlist.lastSyncStatus || 'Pending'}</span>
-                        </div>
-                        ${playlist.lastSyncMessage ? `<small style="color: var(--gray); display: block; margin-top: 5px;">${playlist.lastSyncMessage}</small>` : ''}
-                    </td>
-                    <td>
-                        <div class="playlist-actions">
-                            <button class="btn btn-sm btn-success" onclick="syncPlaylist('${playlist._id}')">
-                                <i class="fas fa-sync-alt"></i> Sync
-                            </button>
-                            <button class="btn btn-sm btn-warning" onclick="openEditPlaylist('${playlist._id}')">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="confirmDeletePlaylist('${playlist._id}', '${playlist.name}')">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </div>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-        }
-        
-        // Add channel
-        async function addChannel(e) {
-            e.preventDefault();
-            
-            const channelData = {
-                title: document.getElementById('channel-title').value,
-                tvgId: document.getElementById('channel-tvgid').value,
-                url: document.getElementById('channel-url').value,
-                m3u8Url: document.getElementById('channel-m3u8').value,
-                groupTitle: document.getElementById('channel-group').value,
-                logo: document.getElementById('channel-logo').value,
-                key: document.getElementById('channel-key').value,
-                cookie: document.getElementById('channel-cookie').value,
-                isActive: document.getElementById('channel-active').checked
-            };
-            
-            try {
-                const response = await fetch(`${API_BASE}/api/channels`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(channelData)
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('add-channel', 'Channel added successfully!', 'success');
-                    resetChannelForm();
-                    loadChannels();
-                    loadStats();
-                    updateM3UUrl();
-                } else {
-                    showAlert('add-channel', `Error: ${data.message}`, 'error');
-                }
-            } catch (error) {
-                showAlert('add-channel', 'Failed to add channel. Please try again.', 'error');
-                console.error('Error adding channel:', error);
-            }
-        }
-        
-        // Reset channel form
-        function resetChannelForm() {
-            document.getElementById('add-channel-form').reset();
-            document.getElementById('channel-tvgid').value = `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            document.getElementById('channel-group').value = 'General';
-            document.getElementById('channel-active').checked = true;
-            document.getElementById('active-status-text').textContent = 'Active';
-        }
-        
-        // Add playlist
-        async function addPlaylist(e) {
-            e.preventDefault();
-            
-            const playlistData = {
-                name: document.getElementById('playlist-name').value,
-                url: document.getElementById('playlist-url').value,
-                autoSync: document.getElementById('playlist-auto-sync').checked,
-                syncInterval: parseInt(document.getElementById('playlist-sync-interval').value) * 3600000,
-                isActive: document.getElementById('playlist-active').checked
-            };
-            
-            try {
-                const response = await fetch(`${API_BASE}/api/playlists`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(playlistData)
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('add-playlist', 'Playlist added successfully!', 'success');
-                    resetPlaylistForm();
-                    loadPlaylists();
-                    loadStats();
+                    const container = document.getElementById('featuredList');
+                    container.innerHTML = '';
                     
-                    // Auto-sync if enabled
-                    if (data.syncResults) {
-                        setTimeout(() => {
-                            loadChannels();
-                            showAlert('add-playlist', `Synced ${data.syncResults.added + data.syncResults.updated} channels from playlist`, 'info');
-                        }, 1000);
-                    }
-                } else {
-                    showAlert('add-playlist', `Error: ${data.message}`, 'error');
-                }
-            } catch (error) {
-                showAlert('add-playlist', 'Failed to add playlist. Please try again.', 'error');
-                console.error('Error adding playlist:', error);
-            }
-        }
-        
-        // Reset playlist form
-        function resetPlaylistForm() {
-            document.getElementById('add-playlist-form').reset();
-            document.getElementById('playlist-sync-interval').value = 1;
-            document.getElementById('playlist-auto-sync').checked = true;
-            document.getElementById('playlist-active').checked = true;
-            document.getElementById('auto-sync-text').textContent = 'Enabled';
-            document.getElementById('playlist-active-text').textContent = 'Active';
-        }
-        
-        // Open edit channel modal
-        async function openEditChannel(channelId) {
-            try {
-                const response = await fetch(`${API_BASE}/api/channels/${channelId}`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    const channel = data.data;
-                    
-                    document.getElementById('edit-channel-id').value = channel._id;
-                    document.getElementById('edit-channel-title').value = channel.title;
-                    document.getElementById('edit-channel-tvgid').value = channel.tvgId;
-                    document.getElementById('edit-channel-url').value = channel.url;
-                    document.getElementById('edit-channel-m3u8').value = channel.m3u8Url;
-                    document.getElementById('edit-channel-group').value = channel.groupTitle;
-                    document.getElementById('edit-channel-logo').value = channel.logo;
-                    document.getElementById('edit-channel-key').value = channel.key;
-                    document.getElementById('edit-channel-cookie').value = channel.cookie;
-                    document.getElementById('edit-channel-active').checked = channel.isActive;
-                    document.getElementById('edit-active-status-text').textContent = channel.isActive ? 'Active' : 'Inactive';
-                    
-                    document.getElementById('edit-channel-modal').classList.add('active');
-                }
-            } catch (error) {
-                console.error('Failed to load channel:', error);
-                showAlert('channels', 'Failed to load channel details.', 'error');
-            }
-        }
-        
-        // Close edit modal
-        function closeEditModal() {
-            document.getElementById('edit-channel-modal').classList.remove('active');
-            document.getElementById('edit-channel-alert').style.display = 'none';
-        }
-        
-        // Update channel
-        async function updateChannel(e) {
-            e.preventDefault();
-            
-            const channelId = document.getElementById('edit-channel-id').value;
-            const channelData = {
-                title: document.getElementById('edit-channel-title').value,
-                tvgId: document.getElementById('edit-channel-tvgid').value,
-                url: document.getElementById('edit-channel-url').value,
-                m3u8Url: document.getElementById('edit-channel-m3u8').value,
-                groupTitle: document.getElementById('edit-channel-group').value,
-                logo: document.getElementById('edit-channel-logo').value,
-                key: document.getElementById('edit-channel-key').value,
-                cookie: document.getElementById('edit-channel-cookie').value,
-                isActive: document.getElementById('edit-channel-active').checked
-            };
-            
-            try {
-                const response = await fetch(`${API_BASE}/api/channels/${channelId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(channelData)
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('edit-channel', 'Channel updated successfully!', 'success');
-                    setTimeout(() => {
-                        closeEditModal();
-                        loadChannels();
-                        loadStats();
-                        updateM3UUrl();
-                    }, 1000);
-                } else {
-                    showAlert('edit-channel', `Error: ${data.message}`, 'error');
-                }
-            } catch (error) {
-                showAlert('edit-channel', 'Failed to update channel. Please try again.', 'error');
-                console.error('Error updating channel:', error);
-            }
-        }
-        
-        // Delete channel
-        async function deleteChannel() {
-            const channelId = document.getElementById('edit-channel-id').value;
-            const channelName = document.getElementById('edit-channel-title').value;
-            
-            if (!confirm(`Are you sure you want to delete "${channelName}"?`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE}/api/channels/${channelId}`, {
-                    method: 'DELETE'
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('edit-channel', 'Channel deleted successfully!', 'success');
-                    setTimeout(() => {
-                        closeEditModal();
-                        loadChannels();
-                        loadStats();
-                        updateM3UUrl();
-                    }, 1000);
-                } else {
-                    showAlert('edit-channel', `Error: ${data.message}`, 'error');
-                }
-            } catch (error) {
-                showAlert('edit-channel', 'Failed to delete channel. Please try again.', 'error');
-                console.error('Error deleting channel:', error);
-            }
-        }
-        
-        // Confirm delete channel
-        function confirmDeleteChannel(channelId, channelName) {
-            if (!confirm(`Are you sure you want to delete "${channelName}"?`)) {
-                return;
-            }
-            
-            fetch(`${API_BASE}/api/channels/${channelId}`, {
-                method: 'DELETE'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('channels', 'Channel deleted successfully!', 'success');
-                    loadChannels();
-                    loadStats();
-                    updateM3UUrl();
-                }
-            })
-            .catch(error => {
-                console.error('Error deleting channel:', error);
-                showAlert('channels', 'Failed to delete channel.', 'error');
-            });
-        }
-        
-        // Delete all channels
-        function deleteAllChannels() {
-            if (!confirm('Are you sure you want to delete ALL channels? This action cannot be undone!')) {
-                return;
-            }
-            
-            fetch(`${API_BASE}/api/channels`, {
-                method: 'DELETE'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('channels', `Deleted ${data.deletedCount} channels successfully!`, 'success');
-                    loadChannels();
-                    loadStats();
-                    updateM3UUrl();
-                }
-            })
-            .catch(error => {
-                console.error('Error deleting all channels:', error);
-                showAlert('channels', 'Failed to delete all channels.', 'error');
-            });
-        }
-        
-        // Open edit playlist modal
-        async function openEditPlaylist(playlistId) {
-            try {
-                const response = await fetch(`${API_BASE}/api/playlists/${playlistId}`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    const playlist = data.data;
-                    
-                    document.getElementById('edit-playlist-id').value = playlist._id;
-                    document.getElementById('edit-playlist-name').value = playlist.name;
-                    document.getElementById('edit-playlist-url').value = playlist.url;
-                    document.getElementById('edit-playlist-sync-interval').value = playlist.syncInterval / 3600000;
-                    document.getElementById('edit-playlist-auto-sync').checked = playlist.autoSync;
-                    document.getElementById('edit-playlist-active').checked = playlist.isActive;
-                    document.getElementById('edit-auto-sync-text').textContent = playlist.autoSync ? 'Enabled' : 'Disabled';
-                    document.getElementById('edit-playlist-active-text').textContent = playlist.isActive ? 'Active' : 'Inactive';
-                    
-                    document.getElementById('edit-playlist-modal').classList.add('active');
-                }
-            } catch (error) {
-                console.error('Failed to load playlist:', error);
-                showAlert('playlists', 'Failed to load playlist details.', 'error');
-            }
-        }
-        
-        // Close playlist modal
-        function closePlaylistModal() {
-            document.getElementById('edit-playlist-modal').classList.remove('active');
-            document.getElementById('edit-playlist-alert').style.display = 'none';
-        }
-        
-        // Update playlist
-        async function updatePlaylist(e) {
-            e.preventDefault();
-            
-            const playlistId = document.getElementById('edit-playlist-id').value;
-            const playlistData = {
-                name: document.getElementById('edit-playlist-name').value,
-                url: document.getElementById('edit-playlist-url').value,
-                autoSync: document.getElementById('edit-playlist-auto-sync').checked,
-                syncInterval: parseInt(document.getElementById('edit-playlist-sync-interval').value) * 3600000,
-                isActive: document.getElementById('edit-playlist-active').checked
-            };
-            
-            try {
-                const response = await fetch(`${API_BASE}/api/playlists/${playlistId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(playlistData)
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('edit-playlist', 'Playlist updated successfully!', 'success');
-                    setTimeout(() => {
-                        closePlaylistModal();
-                        loadPlaylists();
-                    }, 1000);
-                } else {
-                    showAlert('edit-playlist', `Error: ${data.message}`, 'error');
-                }
-            } catch (error) {
-                showAlert('edit-playlist', 'Failed to update playlist. Please try again.', 'error');
-                console.error('Error updating playlist:', error);
-            }
-        }
-        
-        // Delete playlist
-        async function deletePlaylist() {
-            const playlistId = document.getElementById('edit-playlist-id').value;
-            const playlistName = document.getElementById('edit-playlist-name').value;
-            
-            const deleteChannels = confirm(`Delete "${playlistName}"?\n\nDo you also want to delete all channels imported from this playlist?\n\nClick OK to delete channels, Cancel to keep them.`);
-            
-            const url = `${API_BASE}/api/playlists/${playlistId}?deleteChannels=${deleteChannels}`;
-            
-            try {
-                const response = await fetch(url, {
-                    method: 'DELETE'
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAlert('edit-playlist', 'Playlist deleted successfully!', 'success');
-                    setTimeout(() => {
-                        closePlaylistModal();
-                        loadPlaylists();
-                        loadChannels();
-                        loadStats();
-                    }, 1000);
-                } else {
-                    showAlert('edit-playlist', `Error: ${data.message}`, 'error');
-                }
-            } catch (error) {
-                showAlert('edit-playlist', 'Failed to delete playlist. Please try again.', 'error');
-                console.error('Error deleting playlist:', error);
-            }
-        }
-        
-        // Confirm delete playlist
-        function confirmDeletePlaylist(playlistId, playlistName) {
-            const deleteChannels = confirm(`Delete "${playlistName}"?\n\nDo you also want to delete all channels imported from this playlist?\n\nClick OK to delete channels, Cancel to keep them.`);
-            
-            const url = `${API_BASE}/api/playlists/${playlistId}?deleteChannels=${deleteChannels}`;
-            
-            fetch(url, {
-                method: 'DELETE'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('playlists', 'Playlist deleted successfully!', 'success');
-                    loadPlaylists();
-                    loadChannels();
-                    loadStats();
-                }
-            })
-            .catch(error => {
-                console.error('Error deleting playlist:', error);
-                showAlert('playlists', 'Failed to delete playlist.', 'error');
-            });
-        }
-        
-        // Sync playlist
-        function syncPlaylist(playlistId) {
-            fetch(`${API_BASE}/api/playlists/${playlistId}/sync`, {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('playlists', `Playlist synced: ${data.results.added} added, ${data.results.updated} updated`, 'success');
-                    setTimeout(() => {
-                        loadPlaylists();
-                        loadChannels();
-                        loadStats();
-                    }, 1000);
-                } else {
-                    showAlert('playlists', `Sync failed: ${data.message}`, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error syncing playlist:', error);
-                showAlert('playlists', 'Failed to sync playlist.', 'error');
-            });
-        }
-        
-        // Sync all playlists
-        function syncAllPlaylists() {
-            if (!confirm('Sync all playlists? This may take a while.')) {
-                return;
-            }
-            
-            fetch(`${API_BASE}/api/playlists/sync-all`, {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('playlists', 'All playlists synced successfully!', 'success');
-                    setTimeout(() => {
-                        loadPlaylists();
-                        loadChannels();
-                        loadStats();
-                    }, 2000);
-                } else {
-                    showAlert('playlists', `Sync failed: ${data.message}`, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error syncing all playlists:', error);
-                showAlert('playlists', 'Failed to sync playlists.', 'error');
-            });
-        }
-        
-        // Update M3U URL
-        function updateM3UUrl() {
-            const m3uUrl = `${API_BASE}/api/playlist.m3u`;
-            document.getElementById('m3u-url').innerHTML = `<a href="${m3uUrl}" target="_blank">${m3uUrl}</a>`;
-        }
-        
-        // Update generated M3U URL
-        function updateGeneratedM3UUrl() {
-            const group = document.getElementById('m3u-group-filter').value;
-            const useM3u8 = document.getElementById('use-m3u8-fallback').checked;
-            
-            let url = `${API_BASE}/api/playlist.m3u`;
-            const params = [];
-            
-            if (group) {
-                params.push(`groupTitle=${encodeURIComponent(group)}`);
-            }
-            
-            if (useM3u8) {
-                params.push('useM3u8=true');
-            }
-            
-            if (params.length > 0) {
-                url += '?' + params.join('&');
-            }
-            
-            document.getElementById('generated-m3u-url').innerHTML = `<a href="${url}" target="_blank">${url}</a>`;
-            
-            const openBtn = document.getElementById('open-m3u-btn');
-            const downloadBtn = document.getElementById('download-m3u-btn');
-            openBtn.disabled = false;
-            downloadBtn.disabled = false;
-        }
-        
-        // Copy M3U URL
-        function copyM3UUrl() {
-            const url = `${API_BASE}/api/playlist.m3u`;
-            copyToClipboard(url);
-            showTempAlert('dashboard', 'M3U URL copied to clipboard!', 'success');
-        }
-        
-        // Copy generated M3U URL
-        function copyGeneratedM3UUrl() {
-            const urlElement = document.getElementById('generated-m3u-url');
-            const url = urlElement.querySelector('a')?.href || urlElement.textContent;
-            copyToClipboard(url);
-            showTempAlert('m3u-generator', 'M3U URL copied to clipboard!', 'success');
-        }
-        
-        // Download M3U
-        function downloadM3U() {
-            window.open(`${API_BASE}/api/playlist.m3u`, '_blank');
-        }
-        
-        // Download generated M3U
-        function downloadGeneratedM3U() {
-            const group = document.getElementById('m3u-group-filter').value;
-            const useM3u8 = document.getElementById('use-m3u8-fallback').checked;
-            
-            let url = `${API_BASE}/api/playlist.m3u`;
-            const params = [];
-            
-            if (group) {
-                params.push(`groupTitle=${encodeURIComponent(group)}`);
-            }
-            
-            if (useM3u8) {
-                params.push('useM3u8=true');
-            }
-            
-            if (params.length > 0) {
-                url += '?' + params.join('&');
-            }
-            
-            window.open(url, '_blank');
-        }
-        
-        // Open generated M3U
-        function openGeneratedM3U() {
-            const urlElement = document.getElementById('generated-m3u-url');
-            const url = urlElement.querySelector('a')?.href || urlElement.textContent;
-            window.open(url, '_blank');
-        }
-        
-        // Import M3U content
-        async function importM3U() {
-            const m3uContent = document.getElementById('m3u-content').value.trim();
-            
-            if (!m3uContent) {
-                showAlert('bulk-import', 'Please paste M3U content first.', 'warning');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`${API_BASE}/api/channels/bulk`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ m3uContent })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    const results = data.results;
-                    const resultsDiv = document.getElementById('import-results');
-                    
-                    let resultsHtml = `
-                        <div class="alert alert-success">
-                            <i class="fas fa-check-circle"></i>
-                            <div>
-                                <strong>Import Successful!</strong>
-                                <p>Added: ${results.added}, Updated: ${results.updated}, Errors: ${results.errors}</p>
-                            </div>
-                        </div>
-                    `;
-                    
-                    if (results.details.length > 0) {
-                        resultsHtml += '<div class="table-container" style="margin-top: 20px;">';
-                        resultsHtml += '<table><thead><tr><th>Status</th><th>Channel</th><th>TVG ID</th><th>Error</th></tr></thead><tbody>';
-                        
-                        results.details.forEach(detail => {
-                            const statusClass = detail.status === 'added' ? 'badge-success' : 
-                                              detail.status === 'updated' ? 'badge-warning' : 'badge-danger';
-                            
-                            resultsHtml += `
-                                <tr>
-                                    <td><span class="badge ${statusClass}">${detail.status}</span></td>
-                                    <td>${detail.title || 'N/A'}</td>
-                                    <td><code>${detail.tvgId || 'N/A'}</code></td>
-                                    <td>${detail.error || ''}</td>
-                                </tr>
-                            `;
-                        });
-                        
-                        resultsHtml += '</tbody></table></div>';
+                    if (data.data.length === 0) {
+                        container.innerHTML = '<p class="text-muted text-center">No featured content</p>';
+                        return;
                     }
                     
-                    resultsDiv.innerHTML = resultsHtml;
-                    resultsDiv.style.display = 'block';
-                    
-                    showAlert('bulk-import', 'M3U content imported successfully!', 'success');
-                    
-                    // Refresh data
-                    setTimeout(() => {
-                        loadChannels();
-                        loadStats();
-                        updateM3UUrl();
-                    }, 1000);
-                } else {
-                    showAlert('bulk-import', `Import failed: ${data.message}`, 'error');
+                    data.data.forEach(item => {
+                        const typeBadge = item.type === 'movie' ? 'movie-badge' : 'series-badge';
+                        const typeText = item.type === 'movie' ? 'Movie' : 'Series';
+                        
+                        container.innerHTML += `
+                            <div class="d-flex align-items-center mb-2 p-2 border rounded bg-light">
+                                <div class="me-3">
+                                    <span class="badge ${typeBadge} content-type-badge">${typeText}</span>
+                                    ${item.isFeatured ? '<span class="badge featured-badge content-type-badge ms-1">Featured</span>' : ''}
+                                </div>
+                                <div class="flex-grow-1">
+                                    <strong>${item.title}</strong>
+                                    <div class="small text-muted">
+                                        ${item.category || 'General'} • ${item.year || 'N/A'}
+                                    </div>
+                                </div>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-warning" onclick="toggleFeatured('${item._id}', false)">
+                                        <i class="bi bi-star"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewContent('${item._id}')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
                 }
             } catch (error) {
-                showAlert('bulk-import', 'Failed to import M3U content. Please try again.', 'error');
-                console.error('Error importing M3U:', error);
+                console.error('Error loading featured content:', error);
             }
         }
-        
-        // Clear M3U content
-        function clearM3UContent() {
-            document.getElementById('m3u-content').value = '';
-            document.getElementById('import-results').style.display = 'none';
-        }
-        
-        // Load example M3U
-        function loadExampleM3U() {
-            const example = `#EXTM3U
-#EXTINF:-1 tvg-id="example1" group-title="Movies" tvg-logo="https://example.com/logo1.png",Example Movie Channel
-#KODIPROP:inputstream.adaptive.license_key=1234567890abcdef
-#EXTHTTP:{"cookie":"session=abc123"}
-http://example.com/stream1.m3u8
 
-#EXTINF:-1 tvg-id="example2" group-title="Sports",Example Sports Channel
-http://example.com/stream2.m3u8
+        // Content Management Functions
+        async function loadAllContent(page = 1, type = 'all') {
+            try {
+                let url = `${getApiBaseUrl()}/api/content?page=${page}&limit=10`;
+                if (type !== 'all') {
+                    url += `&type=${type}`;
+                }
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentPage = data.page;
+                    totalPages = data.totalPages;
+                    
+                    const container = document.getElementById('contentTableBody');
+                    container.innerHTML = '';
+                    
+                    data.data.forEach(item => {
+                        const typeBadge = item.type === 'movie' ? 
+                            `<span class="badge movie-badge content-type-badge">Movie</span>` :
+                            `<span class="badge series-badge content-type-badge">Series</span>`;
+                        
+                        const featuredBadge = item.isFeatured ? 
+                            `<span class="badge featured-badge content-type-badge ms-1">Featured</span>` : '';
+                        
+                        container.innerHTML += `
+                            <tr>
+                                <td>
+                                    <strong>${item.title}</strong>
+                                    ${typeBadge} ${featuredBadge}
+                                </td>
+                                <td>${item.type}</td>
+                                <td>${item.category || 'General'}</td>
+                                <td>${item.year || 'N/A'}</td>
+                                <td>
+                                    <span class="badge ${item.isActive ? 'bg-success' : 'bg-secondary'}">
+                                        ${item.isActive ? 'Active' : 'Inactive'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="viewContent('${item._id}')">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-warning" onclick="editContent('${item._id}')">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" onclick="deleteContent('${item._id}')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    updatePagination();
+                    document.getElementById('contentCount').textContent = data.total;
+                }
+            } catch (error) {
+                console.error('Error loading content:', error);
+                showToast('error', 'Failed to load content');
+            }
+        }
 
-#EXTINF:-1 tvg-id="example3" group-title="News",Example News Channel
-http://example.com/stream3.m3u8`;
-            
-            document.getElementById('m3u-content').value = example;
+        function filterContent(type) {
+            loadAllContent(1, type);
         }
-        
-        // Test channel stream
-        function testChannel(url) {
-            if (url) {
-                window.open(url, '_blank');
-            } else {
-                alert('No stream URL available for this channel.');
-            }
-        }
-        
-        // Copy channel URL
-        function copyChannelUrl(url) {
-            copyToClipboard(url);
-            showTempAlert('channels', 'Channel URL copied to clipboard!', 'success');
-        }
-        
-        // Update recent channels
-        function updateRecentChannels() {
-            const recentChannels = [...allChannels]
-                .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-                .slice(0, 5);
+
+        function updatePagination() {
+            const pagination = document.getElementById('pagination');
+            pagination.innerHTML = '';
             
-            const tbody = document.getElementById('recent-channels');
-            
-            if (recentChannels.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="5" style="text-align: center; padding: 40px;">
-                            No channels yet. Add your first channel!
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-            
-            tbody.innerHTML = '';
-            
-            recentChannels.forEach(channel => {
-                const row = document.createElement('tr');
-                const updated = new Date(channel.updatedAt).toLocaleString();
-                
-                row.innerHTML = `
-                    <td>
-                        <strong>${channel.title}</strong>
-                        <br><small style="color: var(--gray);">${channel.tvgId}</small>
-                    </td>
-                    <td><span class="badge badge-info">${channel.groupTitle}</span></td>
-                    <td><span class="badge ${channel.isActive ? 'badge-success' : 'badge-danger'}">${channel.isActive ? 'Active' : 'Inactive'}</span></td>
-                    <td>${updated}</td>
-                    <td>
-                        <button class="action-btn edit" onclick="openEditChannel('${channel._id}')" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="action-btn play" onclick="testChannel('${channel.url}')" title="Test">
-                            <i class="fas fa-play"></i>
-                        </button>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-        }
-        
-        // Utility: Copy to clipboard
-        function copyToClipboard(text) {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-        }
-        
-        // Utility: Show alert
-        function showAlert(sectionId, message, type) {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type}`;
-            alertDiv.innerHTML = `
-                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-                <div>${message}</div>
+            // Previous button
+            const prevDisabled = currentPage <= 1 ? 'disabled' : '';
+            pagination.innerHTML += `
+                <li class="page-item ${prevDisabled}">
+                    <a class="page-link" href="#" onclick="loadAllContent(${currentPage - 1})">Previous</a>
+                </li>
             `;
             
-            const container = document.getElementById(sectionId);
-            const existingAlert = container.querySelector('.alert');
-            if (existingAlert) {
-                existingAlert.remove();
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                const active = i === currentPage ? 'active' : '';
+                pagination.innerHTML += `
+                    <li class="page-item ${active}">
+                        <a class="page-link" href="#" onclick="loadAllContent(${i})">${i}</a>
+                    </li>
+                `;
             }
             
-            container.insertBefore(alertDiv, container.firstChild);
+            // Next button
+            const nextDisabled = currentPage >= totalPages ? 'disabled' : '';
+            pagination.innerHTML += `
+                <li class="page-item ${nextDisabled}">
+                    <a class="page-link" href="#" onclick="loadAllContent(${currentPage + 1})">Next</a>
+                </li>
+            `;
+        }
+
+        // Movie Form Functions
+        function setupFormListeners() {
+            // Movie form
+            document.getElementById('addMovieForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await addMovie();
+            });
             
-            // Auto-remove after 5 seconds
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.remove();
+            // Series form
+            document.getElementById('addSeriesForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await addSeries();
+            });
+            
+            // Preview image updates
+            document.querySelector('input[name="thumbnail"]').addEventListener('input', function(e) {
+                document.getElementById('movieThumbPreview').src = e.target.value || 
+                    'https://via.placeholder.com/300x200?text=Thumbnail+Preview';
+            });
+            
+            document.querySelector('input[name="bannerImage"]').addEventListener('input', function(e) {
+                // Could add banner preview if needed
+            });
+        }
+
+        async function addMovie() {
+            const form = document.getElementById('addMovieForm');
+            const formData = new FormData(form);
+            const movieData = {};
+            
+            formData.forEach((value, key) => {
+                if (key === 'genre') {
+                    movieData[key] = Array.from(formData.getAll(key));
+                } else if (key === 'year' || key === 'imdbRating') {
+                    movieData[key] = value ? parseFloat(value) : null;
+                } else if (key === 'cast') {
+                    movieData[key] = value.split(',').map(s => s.trim()).filter(s => s);
+                } else if (key === 'isFeatured') {
+                    movieData[key] = form.elements[key].checked;
+                } else {
+                    movieData[key] = value || '';
                 }
-            }, 5000);
+            });
+            
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/api/movies`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(movieData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('success', '🎬 Movie added successfully!');
+                    clearMovieForm();
+                    fetchStats();
+                    loadDashboardData();
+                } else {
+                    showToast('error', data.message || 'Failed to add movie');
+                }
+            } catch (error) {
+                console.error('Error adding movie:', error);
+                showToast('error', 'Failed to add movie');
+            }
         }
-        
-        // Utility: Show temporary alert
-        function showTempAlert(sectionId, message, type) {
-            showAlert(sectionId, message, type);
+
+        function clearMovieForm() {
+            document.getElementById('addMovieForm').reset();
+            document.getElementById('movieThumbPreview').src = 
+                'https://via.placeholder.com/300x200?text=Thumbnail+Preview';
         }
-        
-        // Auto-refresh every 30 seconds
-        setInterval(() => {
-            loadStats();
-        }, 30000);
-        
-        // Auto-refresh channels every minute
-        setInterval(() => {
-            loadChannels();
-        }, 60000);
+
+        // Series Form Functions
+        function addSeasonField() {
+            const container = document.getElementById('seasonsContainer');
+            const seasonId = seasonCounter;
+            seasonCounter++;
+            
+            container.innerHTML += `
+                <div class="season-card card mb-3" id="season-${seasonId}">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">Season ${seasonId}</h6>
+                            <button type="button" class="btn btn-sm btn-outline-danger" 
+                                    onclick="removeSeason(${seasonId})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Season Title</label>
+                                <input type="text" class="form-control season-title" 
+                                       placeholder="Season ${seasonId}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Season Number</label>
+                                <input type="number" class="form-control season-number" 
+                                       value="${seasonId}" min="1">
+                            </div>
+                        </div>
+                        
+                        <div class="episodes-container mb-3" id="episodes-${seasonId}">
+                            <h6>Episodes</h6>
+                            <!-- Episodes will be added here -->
+                        </div>
+                        
+                        <button type="button" class="btn btn-outline-secondary btn-sm" 
+                                onclick="addEpisodeField(${seasonId})">
+                            <i class="bi bi-plus me-1"></i>Add Episode
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            episodeCounters[seasonId] = 1;
+            addEpisodeField(seasonId); // Add first episode
+        }
+
+        function removeSeason(seasonId) {
+            const element = document.getElementById(`season-${seasonId}`);
+            if (element) {
+                element.remove();
+                delete episodeCounters[seasonId];
+            }
+        }
+
+        function addEpisodeField(seasonId) {
+            const container = document.getElementById(`episodes-${seasonId}`);
+            const episodeNum = episodeCounters[seasonId];
+            
+            container.innerHTML += `
+                <div class="episode-field border rounded p-3 mb-2">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label">Episode Number</label>
+                            <input type="number" class="form-control episode-number" 
+                                   value="${episodeNum}" min="1">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Episode Title</label>
+                            <input type="text" class="form-control episode-title" 
+                                   placeholder="Episode ${episodeNum}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Stream URL</label>
+                            <input type="url" class="form-control episode-url" 
+                                   placeholder="https://example.com/episode.mp4">
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Duration</label>
+                            <input type="text" class="form-control episode-duration" 
+                                   placeholder="45m">
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-danger btn-sm mt-4" 
+                                    onclick="this.closest('.episode-field').remove()">
+                                <i class="bi bi-trash"></i> Remove
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            episodeCounters[seasonId]++;
+        }
+
+        async function addSeries() {
+            const form = document.getElementById('addSeriesForm');
+            const formData = new FormData(form);
+            const seriesData = {
+                title: formData.get('title') || '',
+                description: formData.get('description') || '',
+                thumbnail: formData.get('thumbnail') || '',
+                bannerImage: formData.get('bannerImage') || '',
+                genre: Array.from(formData.getAll('genre')),
+                isFeatured: form.elements['isFeatured']?.checked || false
+            };
+            
+            // Collect seasons data
+            const seasons = [];
+            document.querySelectorAll('.season-card').forEach(seasonCard => {
+                const seasonNumber = seasonCard.querySelector('.season-number').value;
+                const seasonTitle = seasonCard.querySelector('.season-title').value || `Season ${seasonNumber}`;
+                
+                const episodes = [];
+                seasonCard.querySelectorAll('.episode-field').forEach(episodeField => {
+                    episodes.push({
+                        episodeNumber: episodeField.querySelector('.episode-number').value,
+                        title: episodeField.querySelector('.episode-title').value || `Episode ${episodeField.querySelector('.episode-number').value}`,
+                        streamUrl: episodeField.querySelector('.episode-url').value,
+                        duration: episodeField.querySelector('.episode-duration').value || ''
+                    });
+                });
+                
+                seasons.push({
+                    seasonNumber: parseInt(seasonNumber),
+                    title: seasonTitle,
+                    episodes: episodes
+                });
+            });
+            
+            seriesData.seasons = seasons;
+            
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/api/series`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(seriesData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('success', '📺 Series added successfully!');
+                    clearSeriesForm();
+                    fetchStats();
+                    loadDashboardData();
+                } else {
+                    showToast('error', data.message || 'Failed to add series');
+                }
+            } catch (error) {
+                console.error('Error adding series:', error);
+                showToast('error', 'Failed to add series');
+            }
+        }
+
+        function clearSeriesForm() {
+            document.getElementById('addSeriesForm').reset();
+            document.getElementById('seasonsContainer').innerHTML = '';
+            seasonCounter = 1;
+            episodeCounters = {};
+            document.getElementById('seriesThumbPreview').src = 
+                'https://via.placeholder.com/300x200?text=Series+Thumbnail';
+        }
+
+        // Content Actions
+        async function viewContent(contentId) {
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/api/content/${contentId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Create modal to view content details
+                    const content = data.data;
+                    const modalHtml = `
+                        <div class="modal fade" id="contentModal" tabindex="-1">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">
+                                            ${content.title}
+                                            <span class="badge ${content.type === 'movie' ? 'movie-badge' : 'series-badge'} content-type-badge ms-2">
+                                                ${content.type}
+                                            </span>
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                ${content.thumbnail ? 
+                                                    `<img src="${content.thumbnail}" class="img-fluid rounded mb-3" alt="${content.title}">` : 
+                                                    '<div class="bg-light rounded p-5 text-center mb-3">No Thumbnail</div>'}
+                                                <div class="mb-2"><strong>Year:</strong> ${content.year || 'N/A'}</div>
+                                                <div class="mb-2"><strong>Rating:</strong> ${content.rating || 'N/A'}</div>
+                                                <div class="mb-2"><strong>IMDB:</strong> ${content.imdbRating || 'N/A'}</div>
+                                                <div class="mb-2"><strong>Language:</strong> ${content.language || 'N/A'}</div>
+                                            </div>
+                                            <div class="col-md-8">
+                                                <h6>Description</h6>
+                                                <p>${content.description || 'No description available.'}</p>
+                                                
+                                                <h6 class="mt-4">Details</h6>
+                                                <div class="row">
+                                                    <div class="col-6">
+                                                        <div class="mb-2"><strong>Category:</strong> ${content.category || 'General'}</div>
+                                                        <div class="mb-2"><strong>Genres:</strong> ${content.genre?.join(', ') || 'N/A'}</div>
+                                                        <div class="mb-2"><strong>Director:</strong> ${content.director || 'N/A'}</div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <div class="mb-2"><strong>Cast:</strong> ${content.cast?.join(', ') || 'N/A'}</div>
+                                                        <div class="mb-2"><strong>Country:</strong> ${content.country || 'N/A'}</div>
+                                                        <div class="mb-2">
+                                                            <strong>Status:</strong> 
+                                                            <span class="badge ${content.isActive ? 'bg-success' : 'bg-secondary'}">
+                                                                ${content.isActive ? 'Active' : 'Inactive'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                ${content.type === 'movie' ? `
+                                                    <h6 class="mt-4">Movie Details</h6>
+                                                    <div class="mb-2"><strong>Duration:</strong> ${content.duration || 'N/A'}</div>
+                                                    <div class="mb-2">
+                                                        <strong>Stream URL:</strong> 
+                                                        <a href="${content.streamUrl}" target="_blank" class="text-decoration-none">
+                                                            ${content.streamUrl ? 'View Stream' : 'N/A'}
+                                                        </a>
+                                                    </div>
+                                                ` : ''}
+                                                
+                                                ${content.type === 'series' && content.seasons?.length > 0 ? `
+                                                    <h6 class="mt-4">Seasons (${content.totalSeasons})</h6>
+                                                    <div class="accordion" id="seasonsAccordion">
+                                                        ${content.seasons.map((season, index) => `
+                                                            <div class="accordion-item">
+                                                                <h2 class="accordion-header">
+                                                                    <button class="accordion-button ${index > 0 ? 'collapsed' : ''}" 
+                                                                            type="button" data-bs-toggle="collapse" 
+                                                                            data-bs-target="#season${index}">
+                                                                        Season ${season.seasonNumber}: ${season.title}
+                                                                        <span class="badge bg-secondary ms-2">${season.episodeCount} episodes</span>
+                                                                    </button>
+                                                                </h2>
+                                                                <div id="season${index}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
+                                                                     data-bs-parent="#seasonsAccordion">
+                                                                    <div class="accordion-body">
+                                                                        <div class="list-group">
+                                                                            ${season.episodes.map(episode => `
+                                                                                <div class="list-group-item">
+                                                                                    <div class="d-flex justify-content-between">
+                                                                                        <div>
+                                                                                            <strong>Episode ${episode.episodeNumber}:</strong> ${episode.title}
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            ${episode.duration ? `<span class="badge bg-info">${episode.duration}</span>` : ''}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="small text-muted mt-1">
+                                                                                        ${episode.description || 'No description'}
+                                                                                    </div>
+                                                                                </div>
+                                                                            `).join('')}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                        <button type="button" class="btn btn-primary" onclick="editContent('${contentId}')">
+                                            <i class="bi bi-pencil me-1"></i>Edit
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Remove existing modal if any
+                    const existingModal = document.getElementById('contentModal');
+                    if (existingModal) {
+                        existingModal.remove();
+                    }
+                    
+                    // Add modal to body
+                    document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    
+                    // Show modal
+                    const modal = new bootstrap.Modal(document.getElementById('contentModal'));
+                    modal.show();
+                }
+            } catch (error) {
+                console.error('Error viewing content:', error);
+                showToast('error', 'Failed to load content details');
+            }
+        }
+
+        async function editContent(contentId) {
+            showToast('info', 'Edit functionality to be implemented');
+            // Implementation for edit form
+        }
+
+        async function deleteContent(contentId) {
+            if (confirm('Are you sure you want to delete this content?')) {
+                try {
+                    const response = await fetch(`${getApiBaseUrl()}/api/content/${contentId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showToast('success', 'Content deleted successfully');
+                        loadAllContent();
+                        fetchStats();
+                        loadDashboardData();
+                    } else {
+                        showToast('error', data.message || 'Failed to delete content');
+                    }
+                } catch (error) {
+                    console.error('Error deleting content:', error);
+                    showToast('error', 'Failed to delete content');
+                }
+            }
+        }
+
+        async function toggleFeatured(contentId, featured) {
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/api/content/${contentId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ isFeatured: featured })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('success', `Content ${featured ? 'marked as featured' : 'removed from featured'}`);
+                    loadDashboardData();
+                    loadAllContent();
+                }
+            } catch (error) {
+                console.error('Error toggling featured:', error);
+                showToast('error', 'Failed to update featured status');
+            }
+        }
+
+        // Utility Functions
+        function showLoading(show) {
+            document.getElementById('loadingSpinner').style.display = show ? 'inline-block' : 'none';
+        }
+
+        function showToast(type, message) {
+            const toastId = 'toast-' + Date.now();
+            const toastHtml = `
+                <div id="${toastId}" class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0" 
+                     role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" 
+                                data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('toastContainer').insertAdjacentHTML('beforeend', toastHtml);
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+            toast.show();
+            
+            // Remove toast after it's hidden
+            toastElement.addEventListener('hidden.bs.toast', function () {
+                toastElement.remove();
+            });
+        }
     </script>
 </body>
 </html>
