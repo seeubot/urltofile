@@ -1,4 +1,4 @@
-// Complete Secure IPTV Channel Manager API with M3U8 Fallback
+// Complete Movies & TV Series Manager API
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -23,46 +23,98 @@ mongoose.connect(MONGODB_URI, {
 // SCHEMAS
 // ===================================
 
-// Channel Schema with M3U8 fallback
-const channelSchema = new mongoose.Schema({
+// Episode Schema (for TV Series)
+const episodeSchema = new mongoose.Schema({
+  episodeNumber: { type: Number, required: true },
   title: { type: String, required: true },
-  url: { type: String, required: true },
-  m3u8Url: { type: String, default: '' }, // M3U8 fallback URL
-  cookie: { type: String, default: '' },
-  key: { type: String, default: '' },
-  logo: { type: String, default: '' },
-  licenseType: { type: String, default: 'clearkey' },
-  groupTitle: { type: String, default: 'General' },
-  tvgId: { type: String, required: true, unique: true },
+  description: { type: String, default: '' },
+  thumbnail: { type: String, default: '' },
+  streamUrl: { type: String, required: true },
+  duration: { type: String, default: '' },
+  releaseDate: { type: Date, default: null },
+  isActive: { type: Boolean, default: true }
+});
+
+// Season Schema (for TV Series)
+const seasonSchema = new mongoose.Schema({
+  seasonNumber: { type: Number, required: true },
+  title: { type: String, required: true },
+  description: { type: String, default: '' },
+  thumbnail: { type: String, default: '' },
+  releaseDate: { type: Date, default: null },
+  episodes: [episodeSchema],
+  episodeCount: { type: Number, default: 0 }
+});
+
+// Main Content Schema (Movies & Series)
+const contentSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  type: { type: String, enum: ['movie', 'series'], required: true },
+  description: { type: String, default: '' },
+  thumbnail: { type: String, default: '' },
+  bannerImage: { type: String, default: '' },
+  
+  // Movie-specific fields
+  streamUrl: { type: String, default: '' }, // Only for movies
+  duration: { type: String, default: '' }, // Runtime for movies
+  
+  // Series-specific fields
+  seasons: [seasonSchema], // Only for series
+  totalSeasons: { type: Number, default: 0 },
+  totalEpisodes: { type: Number, default: 0 },
+  
+  // Common metadata
+  genre: [{ type: String }],
+  year: { type: Number, default: null },
+  rating: { type: String, default: '' }, // e.g., "PG-13", "R", "TV-MA"
+  imdbRating: { type: Number, default: null },
+  cast: [{ type: String }],
+  director: { type: String, default: '' },
+  language: { type: String, default: 'English' },
+  country: { type: String, default: '' },
+  
+  // Organization
+  category: { type: String, default: 'General' },
+  tags: [{ type: String }],
+  
+  // Status
   isActive: { type: Boolean, default: true },
-  sourcePlaylistId: { type: mongoose.Schema.Types.ObjectId, ref: 'Playlist', default: null },
+  isFeatured: { type: Boolean, default: false },
+  releaseDate: { type: Date, default: null },
+  
+  // Source tracking
+  sourcePlaylistId: { type: mongoose.Schema.Types.ObjectId, ref: 'ContentPlaylist', default: null },
+  
+  // Timestamps
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, {
   timestamps: true
 });
 
-channelSchema.index({ title: 1, groupTitle: 1, tvgId: 1 });
+// Indexes for better query performance
+contentSchema.index({ title: 1, type: 1, category: 1, genre: 1 });
 
-// Playlist URL Schema
-const playlistSchema = new mongoose.Schema({
+// Content Playlist Schema (for bulk imports)
+const contentPlaylistSchema = new mongoose.Schema({
   name: { type: String, required: true },
   url: { type: String, required: true, unique: true },
+  type: { type: String, enum: ['movie', 'series', 'mixed'], default: 'mixed' },
   isActive: { type: Boolean, default: true },
   autoSync: { type: Boolean, default: true },
-  syncInterval: { type: Number, default: 3600000 },
+  syncInterval: { type: Number, default: 3600000 }, // 1 hour
   lastSyncAt: { type: Date, default: null },
   lastSyncStatus: { type: String, default: 'pending' },
   lastSyncMessage: { type: String, default: '' },
-  channelCount: { type: Number, default: 0 },
+  contentCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, {
   timestamps: true
 });
 
-const Channel = mongoose.model('Channel', channelSchema);
-const Playlist = mongoose.model('Playlist', playlistSchema);
+const Content = mongoose.model('Content', contentSchema);
+const ContentPlaylist = mongoose.model('ContentPlaylist', contentPlaylistSchema);
 
 // ===================================
 // MIDDLEWARE
@@ -71,8 +123,8 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
 
 app.use((req, res, next) => {
@@ -84,185 +136,47 @@ app.use((req, res, next) => {
 // UTILITY FUNCTIONS
 // ===================================
 
-function sanitizeChannel(channel, includeSecure = false) {
-  const channelObj = channel.toObject ? channel.toObject() : channel;
+function sanitizeContent(content, includeStreamUrls = false) {
+  const contentObj = content.toObject ? content.toObject() : content;
   
-  if (!includeSecure) {
-    return {
-      _id: channelObj._id,
-      title: channelObj.title,
-      logo: channelObj.logo,
-      groupTitle: channelObj.groupTitle,
-      tvgId: channelObj.tvgId,
-      isActive: channelObj.isActive,
-      licenseType: channelObj.licenseType,
-      hasUrl: !!channelObj.url,
-      hasM3u8Url: !!channelObj.m3u8Url,
-      hasCookie: !!channelObj.cookie,
-      hasKey: !!channelObj.key,
-      createdAt: channelObj.createdAt,
-      updatedAt: channelObj.updatedAt
+  if (!includeStreamUrls) {
+    const sanitized = {
+      _id: contentObj._id,
+      title: contentObj.title,
+      type: contentObj.type,
+      description: contentObj.description,
+      thumbnail: contentObj.thumbnail,
+      bannerImage: contentObj.bannerImage,
+      genre: contentObj.genre,
+      year: contentObj.year,
+      rating: contentObj.rating,
+      imdbRating: contentObj.imdbRating,
+      cast: contentObj.cast,
+      director: contentObj.director,
+      language: contentObj.language,
+      country: contentObj.country,
+      category: contentObj.category,
+      tags: contentObj.tags,
+      isActive: contentObj.isActive,
+      isFeatured: contentObj.isFeatured,
+      releaseDate: contentObj.releaseDate,
+      createdAt: contentObj.createdAt,
+      updatedAt: contentObj.updatedAt
     };
-  }
-  
-  return {
-    _id: channelObj._id,
-    title: channelObj.title,
-    url: channelObj.url,
-    m3u8Url: channelObj.m3u8Url,
-    cookie: channelObj.cookie,
-    key: channelObj.key,
-    logo: channelObj.logo,
-    licenseType: channelObj.licenseType,
-    groupTitle: channelObj.groupTitle,
-    tvgId: channelObj.tvgId,
-    isActive: channelObj.isActive,
-    sourcePlaylistId: channelObj.sourcePlaylistId,
-    createdAt: channelObj.createdAt,
-    updatedAt: channelObj.updatedAt
-  };
-}
-
-function parseSimplifiedM3U(content) {
-  const lines = content.split('\n').map(line => line.trim());
-  const channels = [];
-  let currentChannel = {};
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
     
-    if (line.startsWith('#EXTINF:')) {
-      const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
-      const groupMatch = line.match(/group-title="([^"]*)"/);
-      const logoMatch = line.match(/tvg-logo="([^"]*)"/);
-      const nameMatch = line.match(/,(.+)$/);
-      
-      currentChannel = {
-        title: nameMatch ? nameMatch[1].trim() : 'Unknown Channel',
-        tvgId: tvgIdMatch && tvgIdMatch[1] ? tvgIdMatch[1] : `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        groupTitle: groupMatch ? groupMatch[1] : 'General',
-        logo: logoMatch ? logoMatch[1] : '',
-        licenseType: 'clearkey',
-        key: '',
-        cookie: '',
-        url: '',
-        m3u8Url: ''
-      };
-    } 
-    else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
-      currentChannel.key = line.substring('#KODIPROP:inputstream.adaptive.license_key='.length).trim();
-    } 
-    else if (line.startsWith('#EXTHTTP:')) {
-      try {
-        const jsonMatch = line.match(/#EXTHTTP:(.+)/);
-        if (jsonMatch) {
-          const headers = JSON.parse(jsonMatch[1]);
-          if (headers['cookie']) {
-            currentChannel.cookie = headers['cookie'];
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing EXTHTTP:', e);
-      }
-    } 
-    else if (line && !line.startsWith('#') && (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp'))) {
-      currentChannel.url = line;
-      
-      if (currentChannel.title && currentChannel.url && currentChannel.tvgId) {
-        channels.push({ ...currentChannel });
-      }
-      
-      currentChannel = {};
+    if (contentObj.type === 'movie') {
+      sanitized.duration = contentObj.duration;
+      sanitized.hasStreamUrl = !!contentObj.streamUrl;
+    } else if (contentObj.type === 'series') {
+      sanitized.totalSeasons = contentObj.totalSeasons;
+      sanitized.totalEpisodes = contentObj.totalEpisodes;
+      sanitized.seasonCount = contentObj.seasons ? contentObj.seasons.length : 0;
     }
+    
+    return sanitized;
   }
   
-  return channels;
-}
-
-// Fetch M3U content from URL
-async function fetchM3UContent(url) {
-  try {
-    const response = await axios.get(url, {
-      timeout: 30000,
-      headers: {
-        'User-Agent': 'IPTV-Manager/2.0'
-      }
-    });
-    return response.data;
-  } catch (error) {
-    throw new Error(`Failed to fetch playlist: ${error.message}`);
-  }
-}
-
-// Sync channels from a playlist
-async function syncPlaylistChannels(playlistId) {
-  const playlist = await Playlist.findById(playlistId);
-  if (!playlist) {
-    throw new Error('Playlist not found');
-  }
-
-  try {
-    console.log(`🔄 Syncing playlist: ${playlist.name} (${playlist.url})`);
-    
-    const m3uContent = await fetchM3UContent(playlist.url);
-    const channels = parseSimplifiedM3U(m3uContent);
-    
-    const results = { 
-      added: 0, 
-      updated: 0,
-      skipped: 0, 
-      errors: 0, 
-      total: channels.length
-    };
-
-    for (const channelData of channels) {
-      try {
-        const existing = await Channel.findOne({ tvgId: channelData.tvgId });
-        
-        if (existing) {
-          await Channel.findByIdAndUpdate(existing._id, {
-            ...channelData,
-            sourcePlaylistId: playlistId,
-            updatedAt: Date.now()
-          });
-          results.updated++;
-        } else {
-          const channel = new Channel({
-            ...channelData,
-            sourcePlaylistId: playlistId
-          });
-          await channel.save();
-          results.added++;
-        }
-      } catch (error) {
-        console.error(`Error processing channel ${channelData.title}:`, error);
-        results.errors++;
-      }
-    }
-
-    await Playlist.findByIdAndUpdate(playlistId, {
-      lastSyncAt: Date.now(),
-      lastSyncStatus: 'success',
-      lastSyncMessage: `Successfully synced ${results.added + results.updated} channels`,
-      channelCount: results.added + results.updated,
-      updatedAt: Date.now()
-    });
-
-    console.log(`✅ Sync completed: +${results.added} added, ${results.updated} updated, ${results.errors} errors`);
-    return results;
-
-  } catch (error) {
-    console.error(`❌ Sync failed for ${playlist.name}:`, error);
-    
-    await Playlist.findByIdAndUpdate(playlistId, {
-      lastSyncAt: Date.now(),
-      lastSyncStatus: 'error',
-      lastSyncMessage: error.message,
-      updatedAt: Date.now()
-    });
-    
-    throw error;
-  }
+  return contentObj;
 }
 
 // ===================================
@@ -272,14 +186,10 @@ async function syncPlaylistChannels(playlistId) {
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    message: 'Server is running',
-    url: 'https://static-crane-seeutech-17dd4df3.koyeb.app',
+    message: 'Movies & TV Series Manager API is running',
+    version: '1.0.0',
     timestamp: new Date().toISOString()
   });
-});
-
-app.get('/rocker.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'rocker.html'));
 });
 
 app.get('/health', (req, res) => {
@@ -288,496 +198,474 @@ app.get('/health', (req, res) => {
     mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    api: 'IPTV Channel Manager API v2.4 with M3U8 Fallback'
+    api: 'Movies & TV Series Manager API v1.0'
   });
 });
 
 // ===================================
-// PLAYLIST URL ENDPOINTS
+// CONTENT ENDPOINTS (Movies & Series)
 // ===================================
 
-// Get all playlists
-app.get('/api/playlists', async (req, res) => {
+// Get all content (movies and series)
+app.get('/api/content', async (req, res) => {
   try {
-    const playlists = await Playlist.find().sort({ createdAt: -1 });
-    res.json({ 
-      success: true, 
-      count: playlists.length,
-      data: playlists
-    });
-  } catch (error) {
-    console.error('Error fetching playlists:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching playlists', 
-      error: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred'
-    });
-  }
-});
-
-// Get single playlist
-app.get('/api/playlists/:id', async (req, res) => {
-  try {
-    const playlist = await Playlist.findById(req.params.id);
-    if (!playlist) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Playlist not found' 
-      });
-    }
-    
-    res.json({ 
-      success: true, 
-      data: playlist 
-    });
-  } catch (error) {
-    console.error('Error fetching playlist:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching playlist', 
-      error: error.message 
-    });
-  }
-});
-
-// Add new playlist
-app.post('/api/playlists', async (req, res) => {
-  try {
-    const { name, url, autoSync, syncInterval } = req.body;
-
-    if (!name || !url) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Missing required fields: name and url are mandatory' 
-      });
-    }
-
-    const existing = await Playlist.findOne({ url });
-    if (existing) {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Playlist with this URL already exists' 
-      });
-    }
-
-    const playlistData = {
-      name,
-      url,
-      autoSync: autoSync !== undefined ? autoSync : true,
-      syncInterval: syncInterval || 3600000
-    };
-
-    const playlist = new Playlist(playlistData);
-    await playlist.save();
-
-    if (playlist.autoSync) {
-      try {
-        const syncResults = await syncPlaylistChannels(playlist._id);
-        res.status(201).json({ 
-          success: true, 
-          message: 'Playlist added and synced successfully', 
-          data: playlist,
-          syncResults
-        });
-      } catch (syncError) {
-        res.status(201).json({ 
-          success: true, 
-          message: 'Playlist added but initial sync failed', 
-          data: playlist,
-          syncError: syncError.message
-        });
-      }
-    } else {
-      res.status(201).json({ 
-        success: true, 
-        message: 'Playlist added successfully (sync disabled)', 
-        data: playlist
-      });
-    }
-  } catch (error) {
-    console.error('Error adding playlist:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error adding playlist', 
-      error: error.message 
-    });
-  }
-});
-
-// Update playlist
-app.put('/api/playlists/:id', async (req, res) => {
-  try {
-    const updates = req.body;
-    updates.updatedAt = Date.now();
-
-    const playlist = await Playlist.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    );
-
-    if (!playlist) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Playlist not found' 
-      });
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Playlist updated successfully', 
-      data: playlist
-    });
-  } catch (error) {
-    console.error('Error updating playlist:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error updating playlist', 
-      error: error.message 
-    });
-  }
-});
-
-// Delete playlist
-app.delete('/api/playlists/:id', async (req, res) => {
-  try {
-    const { deleteChannels } = req.query;
-    const playlist = await Playlist.findById(req.params.id);
-
-    if (!playlist) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Playlist not found' 
-      });
-    }
-
-    if (deleteChannels === 'true') {
-      const deleteResult = await Channel.deleteMany({ sourcePlaylistId: req.params.id });
-      console.log(`Deleted ${deleteResult.deletedCount} channels from playlist ${playlist.name}`);
-    } else {
-      await Channel.updateMany(
-        { sourcePlaylistId: req.params.id },
-        { $set: { sourcePlaylistId: null } }
-      );
-    }
-
-    await Playlist.findByIdAndDelete(req.params.id);
-
-    res.json({ 
-      success: true, 
-      message: 'Playlist deleted successfully',
-      deletedPlaylist: playlist.name
-    });
-  } catch (error) {
-    console.error('Error deleting playlist:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error deleting playlist', 
-      error: error.message 
-    });
-  }
-});
-
-// Sync playlist
-app.post('/api/playlists/:id/sync', async (req, res) => {
-  try {
-    const syncResults = await syncPlaylistChannels(req.params.id);
-    res.json({ 
-      success: true, 
-      message: 'Playlist synced successfully',
-      results: syncResults
-    });
-  } catch (error) {
-    console.error('Error syncing playlist:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error syncing playlist', 
-      error: error.message 
-    });
-  }
-});
-
-// Sync all playlists
-app.post('/api/playlists/sync-all', async (req, res) => {
-  try {
-    const playlists = await Playlist.find({ isActive: true, autoSync: true });
-    const results = [];
-
-    for (const playlist of playlists) {
-      try {
-        const syncResult = await syncPlaylistChannels(playlist._id);
-        results.push({
-          playlistId: playlist._id,
-          name: playlist.name,
-          status: 'success',
-          ...syncResult
-        });
-      } catch (error) {
-        results.push({
-          playlistId: playlist._id,
-          name: playlist.name,
-          status: 'error',
-          error: error.message
-        });
-      }
-    }
-
-    res.json({ 
-      success: true, 
-      message: `Synced ${results.length} playlists`,
-      results
-    });
-  } catch (error) {
-    console.error('Error syncing all playlists:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error syncing playlists', 
-      error: error.message 
-    });
-  }
-});
-
-// ===================================
-// CHANNEL CRUD ENDPOINTS
-// ===================================
-
-app.get('/api/channels', async (req, res) => {
-  try {
-    const { groupTitle, active, search, playlistId } = req.query;
+    const { type, category, genre, year, featured, search, limit, page } = req.query;
     let query = {};
 
-    if (groupTitle) query.groupTitle = groupTitle;
-    if (active !== undefined) query.isActive = active === 'true';
-    if (playlistId) query.sourcePlaylistId = playlistId;
+    if (type) query.type = type;
+    if (category) query.category = category;
+    if (genre) query.genre = genre;
+    if (year) query.year = parseInt(year);
+    if (featured !== undefined) query.isFeatured = featured === 'true';
+    
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: 'i' } },
-        { tvgId: { $regex: search, $options: 'i' } },
-        { groupTitle: { $regex: search, $options: 'i' } }
+        { description: { $regex: search, $options: 'i' } },
+        { cast: { $regex: search, $options: 'i' } },
+        { director: { $regex: search, $options: 'i' } }
       ];
     }
 
-    const channels = await Channel.find(query).sort({ title: 1 });
-    const fullData = channels.map(ch => sanitizeChannel(ch, true));
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 50;
+    const skip = (pageNum - 1) * limitNum;
+
+    const total = await Content.countDocuments(query);
+    const content = await Content.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
 
     res.json({ 
       success: true, 
-      count: channels.length,
-      data: fullData
+      count: content.length,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      data: content.map(c => sanitizeContent(c, false))
     });
   } catch (error) {
-    console.error('Error fetching channels:', error);
+    console.error('Error fetching content:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error fetching channels', 
+      message: 'Error fetching content', 
       error: error.message 
     });
   }
 });
 
-app.get('/api/channels/:id', async (req, res) => {
+// Get single content by ID
+app.get('/api/content/:id', async (req, res) => {
   try {
-    const channel = await Channel.findById(req.params.id);
-    if (!channel) {
+    const content = await Content.findById(req.params.id);
+    if (!content) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Channel not found' 
+        message: 'Content not found' 
       });
     }
     
-    const fullData = sanitizeChannel(channel, true);
-    
     res.json({ 
       success: true, 
-      data: fullData 
+      data: sanitizeContent(content, true)
     });
   } catch (error) {
-    console.error('Error fetching channel:', error);
+    console.error('Error fetching content:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error fetching channel', 
+      message: 'Error fetching content', 
       error: error.message 
     });
   }
 });
 
-app.post('/api/channels', async (req, res) => {
+// Add new movie
+app.post('/api/movies', async (req, res) => {
   try {
-    const { title, url, m3u8Url, cookie, key, logo, groupTitle, tvgId } = req.body;
+    const { 
+      title, streamUrl, thumbnail, bannerImage, description, 
+      duration, genre, year, rating, imdbRating, cast, director,
+      language, country, category, tags, isFeatured
+    } = req.body;
 
-    if (!title || !url) {
+    if (!title || !streamUrl) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Missing required fields: title and url are mandatory' 
+        message: 'Title and stream URL are required for movies' 
       });
     }
 
-    const finalTvgId = tvgId || `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    const existing = await Channel.findOne({ tvgId: finalTvgId });
-    if (existing) {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Channel with this tvgId already exists' 
-      });
-    }
-
-    const channelData = {
+    const movieData = {
       title,
-      url,
-      m3u8Url: m3u8Url || '',
-      cookie: cookie || '',
-      key: key || '',
-      logo: logo || '',
-      licenseType: 'clearkey',
-      groupTitle: groupTitle || 'General',
-      tvgId: finalTvgId
+      type: 'movie',
+      streamUrl,
+      thumbnail: thumbnail || '',
+      bannerImage: bannerImage || '',
+      description: description || '',
+      duration: duration || '',
+      genre: genre || [],
+      year: year || null,
+      rating: rating || '',
+      imdbRating: imdbRating || null,
+      cast: cast || [],
+      director: director || '',
+      language: language || 'English',
+      country: country || '',
+      category: category || 'General',
+      tags: tags || [],
+      isFeatured: isFeatured || false
     };
 
-    const channel = new Channel(channelData);
-    await channel.save();
+    const movie = new Content(movieData);
+    await movie.save();
 
     res.status(201).json({ 
       success: true, 
-      message: 'Channel added successfully', 
-      data: sanitizeChannel(channel, true)
+      message: 'Movie added successfully', 
+      data: sanitizeContent(movie, true)
     });
   } catch (error) {
-    console.error('Error adding channel:', error);
+    console.error('Error adding movie:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error adding channel', 
+      message: 'Error adding movie', 
       error: error.message 
     });
   }
 });
 
-app.put('/api/channels/:id', async (req, res) => {
+// Add new series
+app.post('/api/series', async (req, res) => {
+  try {
+    const { 
+      title, thumbnail, bannerImage, description, seasons,
+      genre, year, rating, imdbRating, cast, director,
+      language, country, category, tags, isFeatured
+    } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Title is required for series' 
+      });
+    }
+
+    // Calculate total episodes
+    let totalEpisodes = 0;
+    if (seasons && Array.isArray(seasons)) {
+      seasons.forEach(season => {
+        if (season.episodes && Array.isArray(season.episodes)) {
+          season.episodeCount = season.episodes.length;
+          totalEpisodes += season.episodes.length;
+        }
+      });
+    }
+
+    const seriesData = {
+      title,
+      type: 'series',
+      thumbnail: thumbnail || '',
+      bannerImage: bannerImage || '',
+      description: description || '',
+      seasons: seasons || [],
+      totalSeasons: seasons ? seasons.length : 0,
+      totalEpisodes,
+      genre: genre || [],
+      year: year || null,
+      rating: rating || '',
+      imdbRating: imdbRating || null,
+      cast: cast || [],
+      director: director || '',
+      language: language || 'English',
+      country: country || '',
+      category: category || 'General',
+      tags: tags || [],
+      isFeatured: isFeatured || false
+    };
+
+    const series = new Content(seriesData);
+    await series.save();
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Series added successfully', 
+      data: sanitizeContent(series, true)
+    });
+  } catch (error) {
+    console.error('Error adding series:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error adding series', 
+      error: error.message 
+    });
+  }
+});
+
+// Update content (movie or series)
+app.put('/api/content/:id', async (req, res) => {
   try {
     const updates = req.body;
     updates.updatedAt = Date.now();
 
-    if (updates.licenseType) {
-      updates.licenseType = 'clearkey';
+    // Recalculate totals for series
+    if (updates.type === 'series' && updates.seasons) {
+      let totalEpisodes = 0;
+      updates.seasons.forEach(season => {
+        if (season.episodes && Array.isArray(season.episodes)) {
+          season.episodeCount = season.episodes.length;
+          totalEpisodes += season.episodes.length;
+        }
+      });
+      updates.totalSeasons = updates.seasons.length;
+      updates.totalEpisodes = totalEpisodes;
     }
 
-    const channel = await Channel.findByIdAndUpdate(
+    const content = await Content.findByIdAndUpdate(
       req.params.id,
       updates,
       { new: true, runValidators: true }
     );
 
-    if (!channel) {
+    if (!content) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Channel not found' 
+        message: 'Content not found' 
       });
     }
 
     res.json({ 
       success: true, 
-      message: 'Channel updated successfully', 
-      data: sanitizeChannel(channel, true)
+      message: 'Content updated successfully', 
+      data: sanitizeContent(content, true)
     });
   } catch (error) {
-    console.error('Error updating channel:', error);
+    console.error('Error updating content:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error updating channel', 
+      message: 'Error updating content', 
       error: error.message 
     });
   }
 });
 
-app.delete('/api/channels/:id', async (req, res) => {
+// Delete content
+app.delete('/api/content/:id', async (req, res) => {
   try {
-    const channel = await Channel.findByIdAndDelete(req.params.id);
+    const content = await Content.findByIdAndDelete(req.params.id);
 
-    if (!channel) {
+    if (!content) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Channel not found' 
+        message: 'Content not found' 
       });
     }
 
     res.json({ 
       success: true, 
-      message: 'Channel deleted successfully',
-      deletedChannel: channel.title
+      message: 'Content deleted successfully',
+      deletedContent: content.title
     });
   } catch (error) {
-    console.error('Error deleting channel:', error);
+    console.error('Error deleting content:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error deleting channel', 
-      error: error.message 
-    });
-  }
-});
-
-app.delete('/api/channels', async (req, res) => {
-  try {
-    const result = await Channel.deleteMany({});
-
-    res.json({ 
-      success: true, 
-      message: `Successfully deleted all channels`,
-      deletedCount: result.deletedCount
-    });
-  } catch (error) {
-    console.error('Error deleting all channels:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error deleting all channels', 
+      message: 'Error deleting content', 
       error: error.message 
     });
   }
 });
 
 // ===================================
-// UTILITY ENDPOINTS
+// SEASON & EPISODE MANAGEMENT
 // ===================================
 
-app.get('/api/groups', async (req, res) => {
+// Add season to series
+app.post('/api/series/:id/seasons', async (req, res) => {
   try {
-    const groups = await Channel.distinct('groupTitle');
-    res.json({ 
+    const { seasonNumber, title, description, thumbnail, episodes } = req.body;
+
+    const series = await Content.findById(req.params.id);
+    if (!series || series.type !== 'series') {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Series not found' 
+      });
+    }
+
+    const newSeason = {
+      seasonNumber,
+      title,
+      description: description || '',
+      thumbnail: thumbnail || '',
+      episodes: episodes || [],
+      episodeCount: episodes ? episodes.length : 0
+    };
+
+    series.seasons.push(newSeason);
+    series.totalSeasons = series.seasons.length;
+    
+    // Recalculate total episodes
+    let totalEpisodes = 0;
+    series.seasons.forEach(season => {
+      totalEpisodes += season.episodes.length;
+    });
+    series.totalEpisodes = totalEpisodes;
+    
+    await series.save();
+
+    res.status(201).json({ 
       success: true, 
-      count: groups.length,
-      data: groups.sort() 
+      message: 'Season added successfully', 
+      data: sanitizeContent(series, true)
     });
   } catch (error) {
-    console.error('Error fetching groups:', error);
+    console.error('Error adding season:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error fetching groups', 
+      message: 'Error adding season', 
       error: error.message 
     });
   }
 });
+
+// Add episode to season
+app.post('/api/series/:seriesId/seasons/:seasonNumber/episodes', async (req, res) => {
+  try {
+    const { episodeNumber, title, description, thumbnail, streamUrl, duration } = req.body;
+
+    if (!streamUrl) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Stream URL is required for episodes' 
+      });
+    }
+
+    const series = await Content.findById(req.params.seriesId);
+    if (!series || series.type !== 'series') {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Series not found' 
+      });
+    }
+
+    const season = series.seasons.find(s => s.seasonNumber === parseInt(req.params.seasonNumber));
+    if (!season) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Season not found' 
+      });
+    }
+
+    const newEpisode = {
+      episodeNumber,
+      title,
+      description: description || '',
+      thumbnail: thumbnail || '',
+      streamUrl,
+      duration: duration || ''
+    };
+
+    season.episodes.push(newEpisode);
+    season.episodeCount = season.episodes.length;
+    
+    // Recalculate total episodes
+    let totalEpisodes = 0;
+    series.seasons.forEach(s => {
+      totalEpisodes += s.episodes.length;
+    });
+    series.totalEpisodes = totalEpisodes;
+    
+    await series.save();
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Episode added successfully', 
+      data: sanitizeContent(series, true)
+    });
+  } catch (error) {
+    console.error('Error adding episode:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error adding episode', 
+      error: error.message 
+    });
+  }
+});
+
+// Get episodes for a specific season
+app.get('/api/series/:seriesId/seasons/:seasonNumber/episodes', async (req, res) => {
+  try {
+    const series = await Content.findById(req.params.seriesId);
+    if (!series || series.type !== 'series') {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Series not found' 
+      });
+    }
+
+    const season = series.seasons.find(s => s.seasonNumber === parseInt(req.params.seasonNumber));
+    if (!season) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Season not found' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      data: {
+        seriesTitle: series.title,
+        seasonNumber: season.seasonNumber,
+        seasonTitle: season.title,
+        episodes: season.episodes
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching episodes:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching episodes', 
+      error: error.message 
+    });
+  }
+});
+
+// ===================================
+// STATISTICS & METADATA
+// ===================================
 
 app.get('/api/stats', async (req, res) => {
   try {
-    const total = await Channel.countDocuments();
-    const active = await Channel.countDocuments({ isActive: true });
-    const groups = await Channel.distinct('groupTitle');
-    const withDRM = await Channel.countDocuments({ key: { $ne: '' } });
-    const withM3u8 = await Channel.countDocuments({ m3u8Url: { $ne: '' } });
-    const totalPlaylists = await Playlist.countDocuments();
-    const activePlaylists = await Playlist.countDocuments({ isActive: true });
+    const totalContent = await Content.countDocuments();
+    const totalMovies = await Content.countDocuments({ type: 'movie' });
+    const totalSeries = await Content.countDocuments({ type: 'series' });
+    const featuredContent = await Content.countDocuments({ isFeatured: true });
+    const categories = await Content.distinct('category');
+    const genres = await Content.distinct('genre');
+
+    // Get series episode stats
+    const seriesList = await Content.find({ type: 'series' });
+    let totalSeasons = 0;
+    let totalEpisodes = 0;
+    seriesList.forEach(series => {
+      totalSeasons += series.totalSeasons || 0;
+      totalEpisodes += series.totalEpisodes || 0;
+    });
 
     res.json({
       success: true,
       data: {
-        totalChannels: total,
-        activeChannels: active,
-        inactiveChannels: total - active,
-        totalGroups: groups.length,
-        channelsWithDRM: withDRM,
-        channelsWithM3u8Fallback: withM3u8,
-        totalPlaylists,
-        activePlaylists,
-        groups: groups.sort()
+        totalContent,
+        totalMovies,
+        totalSeries,
+        featuredContent,
+        totalSeasons,
+        totalEpisodes,
+        totalCategories: categories.length,
+        totalGenres: genres.length,
+        categories: categories.sort(),
+        genres: genres.sort()
       }
     });
   } catch (error) {
@@ -790,114 +678,134 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// ===================================
-// M3U PLAYLIST GENERATION
-// ===================================
-
-app.get('/api/playlist.m3u', async (req, res) => {
+app.get('/api/categories', async (req, res) => {
   try {
-    const { groupTitle, useM3u8 } = req.query;
-    let query = { isActive: true };
-    if (groupTitle) query.groupTitle = groupTitle;
-
-    const channels = await Channel.find(query).sort({ title: 1 });
-    
-    let m3u = '#EXTM3U x-tvg-url=""\n';
-    
-    for (const channel of channels) {
-      // Determine which URL to use
-      let streamUrl = channel.url;
-      
-      // If useM3u8 parameter is set and m3u8Url exists, prefer m3u8
-      if (useM3u8 === 'true' && channel.m3u8Url) {
-        streamUrl = channel.m3u8Url;
-      }
-      
-      if (!streamUrl) continue;
-
-      m3u += `#EXTINF:-1 tvg-id="${channel.tvgId}" group-title="${channel.groupTitle}" tvg-logo="${channel.logo}",${channel.title}\n`;
-      
-      if (channel.key) {
-        m3u += `#KODIPROP:inputstream.adaptive.license_type=clearkey\n`;
-        m3u += `#KODIPROP:inputstream.adaptive.license_key=${channel.key}\n`;
-      }
-      
-      if (channel.cookie) {
-        m3u += `#EXTHTTP:{"cookie":"${channel.cookie}"}\n`;
-      }
-      
-      m3u += `${streamUrl}\n\n`;
-    }
-
-    res.setHeader('Content-Type', 'audio/x-mpegurl');
-    res.setHeader('Content-Disposition', 'attachment; filename="playlist.m3u"');
-    res.send(m3u);
+    const categories = await Content.distinct('category');
+    res.json({ 
+      success: true, 
+      count: categories.length,
+      data: categories.sort() 
+    });
   } catch (error) {
-    console.error('Error generating playlist:', error);
+    console.error('Error fetching categories:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Error generating playlist', 
+      message: 'Error fetching categories', 
+      error: error.message 
+    });
+  }
+});
+
+app.get('/api/genres', async (req, res) => {
+  try {
+    const genres = await Content.distinct('genre');
+    res.json({ 
+      success: true, 
+      count: genres.length,
+      data: genres.sort() 
+    });
+  } catch (error) {
+    console.error('Error fetching genres:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching genres', 
       error: error.message 
     });
   }
 });
 
 // ===================================
-// BULK IMPORT FROM M3U
+// BULK OPERATIONS
 // ===================================
 
-app.post('/api/channels/bulk', async (req, res) => {
+app.post('/api/content/bulk', async (req, res) => {
   try {
-    const { m3uContent } = req.body;
+    const { items } = req.body;
 
-    if (!m3uContent) {
+    if (!items || !Array.isArray(items)) {
       return res.status(400).json({ 
         success: false, 
-        message: 'No M3U content provided' 
+        message: 'Items array is required' 
       });
     }
 
-    const channels = parseSimplifiedM3U(m3uContent);
     const results = { 
       added: 0, 
       updated: 0,
-      skipped: 0, 
       errors: 0, 
-      total: channels.length,
+      total: items.length,
       details: []
     };
 
-    for (const channelData of channels) {
+    for (const item of items) {
       try {
-        const existing = await Channel.findOne({ tvgId: channelData.tvgId });
+        // Validate required fields
+        if (!item.title) {
+          results.errors++;
+          results.details.push({ 
+            status: 'error', 
+            title: item.title || 'Unknown',
+            error: 'Title is required' 
+          });
+          continue;
+        }
+
+        if (item.type === 'movie' && !item.streamUrl) {
+          results.errors++;
+          results.details.push({ 
+            status: 'error', 
+            title: item.title,
+            error: 'Stream URL is required for movies' 
+          });
+          continue;
+        }
+
+        // Calculate totals for series
+        if (item.type === 'series' && item.seasons) {
+          let totalEpisodes = 0;
+          item.seasons.forEach(season => {
+            if (season.episodes) {
+              season.episodeCount = season.episodes.length;
+              totalEpisodes += season.episodes.length;
+            }
+          });
+          item.totalSeasons = item.seasons.length;
+          item.totalEpisodes = totalEpisodes;
+        }
+
+        // Try to find existing content by title
+        const existing = await Content.findOne({ 
+          title: item.title,
+          type: item.type 
+        });
         
         if (existing) {
-          await Channel.findByIdAndUpdate(existing._id, {
-            ...channelData,
+          await Content.findByIdAndUpdate(existing._id, {
+            ...item,
             updatedAt: Date.now()
           });
           results.updated++;
           results.details.push({ 
             status: 'updated', 
-            title: channelData.title,
-            tvgId: channelData.tvgId 
+            title: item.title,
+            type: item.type 
           });
         } else {
-          const channel = new Channel(channelData);
-          await channel.save();
+          const content = new Content(item);
+          await content.save();
           results.added++;
           results.details.push({ 
             status: 'added', 
-            title: channelData.title,
-            tvgId: channelData.tvgId 
+            title: item.title,
+            type: item.type 
           });
         }
       } catch (error) {
-        console.error(`Error processing channel ${channelData.title}:`, error);
+        console.error(`Error processing ${item.title}:`, error);
         results.errors++;
         results.details.push({ 
           status: 'error', 
-          title: channelData.title,
+          title: item.title,
           error: error.message 
         });
       }
@@ -913,6 +821,103 @@ app.post('/api/channels/bulk', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Error in bulk import', 
+      error: error.message 
+    });
+  }
+});
+
+// ===================================
+// PLAYLIST MANAGEMENT
+// ===================================
+
+app.get('/api/playlists', async (req, res) => {
+  try {
+    const playlists = await ContentPlaylist.find().sort({ createdAt: -1 });
+    res.json({ 
+      success: true, 
+      count: playlists.length,
+      data: playlists
+    });
+  } catch (error) {
+    console.error('Error fetching playlists:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching playlists', 
+      error: error.message 
+    });
+  }
+});
+
+app.post('/api/playlists', async (req, res) => {
+  try {
+    const { name, url, type, autoSync } = req.body;
+
+    if (!name || !url) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name and URL are required' 
+      });
+    }
+
+    const playlist = new ContentPlaylist({
+      name,
+      url,
+      type: type || 'mixed',
+      autoSync: autoSync !== undefined ? autoSync : true
+    });
+
+    await playlist.save();
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Playlist added successfully', 
+      data: playlist
+    });
+  } catch (error) {
+    console.error('Error adding playlist:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error adding playlist', 
+      error: error.message 
+    });
+  }
+});
+
+// ===================================
+// SEARCH & FILTER
+// ===================================
+
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q, type, genre, year, rating } = req.query;
+    
+    let query = {};
+    
+    if (q) {
+      query.$or = [
+        { title: { $regex: q, $options: 'i' } },
+        { description: { $regex: q, $options: 'i' } },
+        { cast: { $regex: q, $options: 'i' } }
+      ];
+    }
+    
+    if (type) query.type = type;
+    if (genre) query.genre = genre;
+    if (year) query.year = parseInt(year);
+    if (rating) query.rating = rating;
+
+    const results = await Content.find(query).limit(50);
+
+    res.json({ 
+      success: true, 
+      count: results.length,
+      data: results.map(c => sanitizeContent(c, false))
+    });
+  } catch (error) {
+    console.error('Error searching:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error searching content', 
       error: error.message 
     });
   }
@@ -940,43 +945,13 @@ app.use((req, res) => {
 });
 
 // ===================================
-// AUTO-SYNC SCHEDULER
-// ===================================
-
-// Auto-sync playlists every 5 minutes
-setInterval(async () => {
-  try {
-    const playlists = await Playlist.find({ 
-      isActive: true, 
-      autoSync: true 
-    });
-
-    for (const playlist of playlists) {
-      const timeSinceLastSync = Date.now() - (playlist.lastSyncAt || 0);
-      
-      if (timeSinceLastSync >= playlist.syncInterval) {
-        console.log(`⏰ Auto-syncing playlist: ${playlist.name}`);
-        try {
-          await syncPlaylistChannels(playlist._id);
-        } catch (error) {
-          console.error(`Auto-sync failed for ${playlist.name}:`, error);
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error in playlist auto-sync:', error);
-  }
-}, 300000);
-
-// ===================================
 // SERVER START
 // ===================================
 
 const server = app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════╗
-║     🎬 IPTV CHANNEL MANAGER API v2.4                  ║
-║           WITH M3U8 FALLBACK SUPPORT                  ║
+║     🎬 MOVIES & TV SERIES MANAGER API v1.0            ║
 ╚════════════════════════════════════════════════════════╝
 
 🚀 Server Status: RUNNING
@@ -986,30 +961,36 @@ const server = app.listen(PORT, () => {
 
 📊 MongoDB: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}
 
-✨ NEW FEATURES:
-   • M3U8 fallback URL support
-   • Auto-switch to M3U8 if main URL fails
-   • Both URLs stored under same channel
-   • Access manager via /rocker.html
+✨ FEATURES:
+   • Movies with streaming URLs
+   • TV Series with seasons & episodes
+   • Thumbnails & banner images
+   • Advanced metadata (cast, genre, ratings)
+   • Bulk import support
+   • Search & filter capabilities
 
 🎯 MAIN ENDPOINTS:
-   ├─ GET    /                        Server status
-   ├─ GET    /rocker.html             Channel Manager UI
-   ├─ GET    /health                  Health check
-   │
-   ├─ POST   /api/playlists           Add playlist
-   ├─ GET    /api/playlists           List playlists
-   ├─ POST   /api/playlists/:id/sync  Sync playlist
-   │
-   ├─ POST   /api/channels            Add channel (with m3u8Url)
-   ├─ GET    /api/channels            List channels
-   ├─ PUT    /api/channels/:id        Update channel
-   ├─ DELETE /api/channels/:id        Delete channel
-   │
-   └─ GET    /api/playlist.m3u        Generate M3U playlist
 
-🔄 AUTO-SYNC:
-   • Playlists: Every 5 minutes
+   MOVIES:
+   ├─ POST   /api/movies              Add movie
+   ├─ GET    /api/content?type=movie  List movies
+   
+   SERIES:
+   ├─ POST   /api/series              Add series
+   ├─ GET    /api/content?type=series List series
+   ├─ POST   /api/series/:id/seasons  Add season
+   └─ POST   /api/series/:id/seasons/:num/episodes  Add episode
+   
+   GENERAL:
+   ├─ GET    /api/content             List all content
+   ├─ GET    /api/content/:id         Get single item
+   ├─ PUT    /api/content/:id         Update content
+   ├─ DELETE /api/content/:id         Delete content
+   ├─ POST   /api/content/bulk        Bulk import
+   ├─ GET    /api/search              Search content
+   ├─ GET    /api/stats               Statistics
+   ├─ GET    /api/categories          List categories
+   └─ GET    /api/genres              List genres
 
 ════════════════════════════════════════════════════════
   `);
